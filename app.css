@@ -1,0 +1,22 @@
+.App {
+    display: flex;
+  }
+  
+  .right-pane {
+    flex: 1;
+    padding: 20px;
+  }
+
+  .left-pane { 
+    width: '800px';
+    height: '600px';
+    background-color: #2D2D2D;
+  }
+  
+  html, body {
+    height: 100%;
+    color: #61DAFB;
+    background: #2D2D2D;
+    margin: 100px;
+  }
+  

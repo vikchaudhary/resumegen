@@ -1,3 +1,17 @@
+# This Python app is a backend application. It serves as an API server and does not include a frontend.
+# It uses Flask to define REST API endpoints that handle requests and return JSON responses:
+#   /save-job
+#   /get-jobs
+#   /get-job/<job_id>
+#   /analyze
+#   /generate
+# 
+# Functionality:
+#   Manages data in a SQLite database.
+#   Performs keyword extraction and resume enhancement using OpenAI's API.
+#   Interacts with clients via JSON over HTTP.
+#   The app is designed to be consumed by external clients such as web or mobile frontends.
+
 # Import all libs
 from flask import Flask, request, jsonify
 import sqlite3
@@ -22,6 +36,48 @@ openai.api_key = ''
 
 # Configure SQLite database
 db_file = 'keyguru.db'
+
+def initialize_db():
+    # This function connects to the SQLite database and creates the required tables 
+    # It ensures that the database is set up before the application runs.
+    conn = sqlite3.connect(db_file)
+    cursor = conn.cursor()
+    
+    # Create the "user" table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL
+        )
+    ''')
+
+    # Create the "org" table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS org (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL
+        )
+    ''')
+
+    # Create the "job" table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS job (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            desc TEXT NOT NULL,
+            owner_id INTEGER NOT NULL,
+            org_id INTEGER NOT NULL,
+            FOREIGN KEY (owner_id) REFERENCES user (id),
+            FOREIGN KEY (org_id) REFERENCES org (id)
+        )
+    ''')
+
+    conn.commit()
+    conn.close()
+
+@app.route('/')
+def home():
+    return jsonify({"message": "Welcome to the Resumegen API! Available endpoints: /save-job, /get-jobs, /get-job/<job_id>, /analyze, /generate"})
 
 # Save Job endpoint
 @app.route('/save-job', methods=['POST'])
@@ -318,5 +374,5 @@ def generate_resume():
 
 if __name__ == "__main__":
     # Create the database tables
-    db.create_all()
+    initialize_db()
     app.run()

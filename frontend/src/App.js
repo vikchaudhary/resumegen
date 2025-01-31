@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import './App.css'; // Import the CSS file
 
 /* Material UI controls */
 import Box from '@mui/material/Box';
@@ -41,8 +42,6 @@ export const themeOptions: ThemeOptions = {
     },
   },
 };
-
-import './App.css'; // Import the CSS file
 
 /* Constants */
 const G_KEYBUTTON_TXT = "Extract Keywords";

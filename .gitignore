@@ -1,5 +1,2 @@
-frontend/node_modules
+# Ignore build files
 frontend/build
-
-keyguru.db
-backend/keyguru.db

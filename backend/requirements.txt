@@ -1,4 +1,6 @@
 flask
 flask-cors
 openai
-
+reactpy
+fastapi
+uvicorn

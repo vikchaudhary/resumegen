@@ -4,3 +4,4 @@ openai
 reactpy
 fastapi
 uvicorn
+gunicorn

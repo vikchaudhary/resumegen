@@ -14,10 +14,12 @@ const WebAssemblyExportImportedDependency = require("../dependencies/WebAssembly
 const WebAssemblyImportDependency = require("../dependencies/WebAssemblyImportDependency");
 
 /** @typedef {import("../Module")} Module */
+/** @typedef {import("../Module").BuildInfo} BuildInfo */
+/** @typedef {import("../Module").BuildMeta} BuildMeta */
 /** @typedef {import("../Parser").ParserState} ParserState */
 /** @typedef {import("../Parser").PreparsedAst} PreparsedAst */
 
-const JS_COMPAT_TYPES = new Set(["i32", "i64", "f32", "f64"]);
+const JS_COMPAT_TYPES = new Set(["i32", "i64", "f32", "f64", "externref"]);
 
 /**
  * @param {t.Signature} signature the func signature
@@ -81,8 +83,10 @@ class WebAssemblyParser extends Parser {
 		}
 
 		// flag it as ESM
-		state.module.buildInfo.strict = true;
-		state.module.buildMeta.exportsType = "namespace";
+		/** @type {BuildInfo} */
+		(state.module.buildInfo).strict = true;
+		/** @type {BuildMeta} */
+		(state.module.buildMeta).exportsType = "namespace";
 
 		// parse it
 		const program = decode(source, decoderOpts);
@@ -93,8 +97,9 @@ class WebAssemblyParser extends Parser {
 		// extract imports and exports
 		/** @type {string[]} */
 		const exports = [];
-		let jsIncompatibleExports = (state.module.buildMeta.jsIncompatibleExports =
-			undefined);
+		const buildMeta = /** @type {BuildMeta} */ (state.module.buildMeta);
+		/** @type {Record<string, string> | undefined} */
+		let jsIncompatibleExports = (buildMeta.jsIncompatibleExports = undefined);
 
 		/** @type {TODO[]} */
 		const importedGlobals = [];
@@ -114,7 +119,8 @@ class WebAssemblyParser extends Parser {
 					if (incompatibleType) {
 						if (jsIncompatibleExports === undefined) {
 							jsIncompatibleExports =
-								state.module.buildMeta.jsIncompatibleExports = {};
+								/** @type {BuildMeta} */
+								(state.module.buildMeta).jsIncompatibleExports = {};
 						}
 						jsIncompatibleExports[node.name] = incompatibleType;
 					}
@@ -123,7 +129,8 @@ class WebAssemblyParser extends Parser {
 				exports.push(node.name);
 
 				if (node.descr && node.descr.exportType === "Global") {
-					const refNode = importedGlobals[node.descr.id.value];
+					const refNode =
+						importedGlobals[/** @type {TODO} */ (node.descr.id.value)];
 					if (refNode) {
 						const dep = new WebAssemblyExportImportedDependency(
 							node.name,

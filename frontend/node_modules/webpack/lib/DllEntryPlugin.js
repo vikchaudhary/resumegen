@@ -9,11 +9,15 @@ const DllModuleFactory = require("./DllModuleFactory");
 const DllEntryDependency = require("./dependencies/DllEntryDependency");
 const EntryDependency = require("./dependencies/EntryDependency");
 
+/** @typedef {import("./Compiler")} Compiler */
+/** @typedef {string[]} Entries */
+/** @typedef {{ name: string, filename: TODO }} Options */
+
 class DllEntryPlugin {
 	/**
 	 * @param {string} context context
-	 * @param {string[]} entries entry names
-	 * @param {TODO} options options
+	 * @param {Entries} entries entry names
+	 * @param {Options} options options
 	 */
 	constructor(context, entries, options) {
 		this.context = context;
@@ -21,6 +25,11 @@ class DllEntryPlugin {
 		this.options = options;
 	}
 
+	/**
+	 * Apply the plugin
+	 * @param {Compiler} compiler the compiler instance
+	 * @returns {void}
+	 */
 	apply(compiler) {
 		compiler.hooks.compilation.tap(
 			"DllEntryPlugin",
@@ -51,7 +60,10 @@ class DllEntryPlugin {
 					this.options.name
 				),
 				this.options,
-				callback
+				error => {
+					if (error) return callback(error);
+					callback();
+				}
 			);
 		});
 	}

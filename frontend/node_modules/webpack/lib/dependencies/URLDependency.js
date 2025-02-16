@@ -6,6 +6,7 @@
 "use strict";
 
 const RuntimeGlobals = require("../RuntimeGlobals");
+const RawDataUrlModule = require("../asset/RawDataUrlModule");
 const {
 	getDependencyUsedByExportsCondition
 } = require("../optimize/InnerGraph");
@@ -16,6 +17,7 @@ const ModuleDependency = require("./ModuleDependency");
 /** @typedef {import("webpack-sources").ReplaceSource} ReplaceSource */
 /** @typedef {import("../ChunkGraph")} ChunkGraph */
 /** @typedef {import("../Dependency")} Dependency */
+/** @typedef {import("../Dependency").GetConditionFn} GetConditionFn */
 /** @typedef {import("../Dependency").UpdateHashContext} UpdateHashContext */
 /** @typedef {import("../DependencyTemplate").DependencyTemplateContext} DependencyTemplateContext */
 /** @typedef {import("../Module")} Module */
@@ -28,7 +30,9 @@ const ModuleDependency = require("./ModuleDependency");
 /** @typedef {import("../util/Hash")} Hash */
 /** @typedef {import("../util/runtime").RuntimeSpec} RuntimeSpec */
 
-const getRawDataUrlModule = memoize(() => require("../asset/RawDataUrlModule"));
+const getIgnoredRawDataUrlModule = memoize(
+	() => new RawDataUrlModule("data:,", "ignored-asset", "(ignored asset)")
+);
 
 class URLDependency extends ModuleDependency {
 	/**
@@ -42,7 +46,7 @@ class URLDependency extends ModuleDependency {
 		this.range = range;
 		this.outerRange = outerRange;
 		this.relative = relative || false;
-		/** @type {Set<string> | boolean} */
+		/** @type {Set<string> | boolean | undefined} */
 		this.usedByExports = undefined;
 	}
 
@@ -56,7 +60,7 @@ class URLDependency extends ModuleDependency {
 
 	/**
 	 * @param {ModuleGraph} moduleGraph module graph
-	 * @returns {null | false | function(ModuleGraphConnection, RuntimeSpec): ConnectionState} function to determine if the connection is active
+	 * @returns {null | false | GetConditionFn} function to determine if the connection is active
 	 */
 	getCondition(moduleGraph) {
 		return getDependencyUsedByExportsCondition(
@@ -68,11 +72,10 @@ class URLDependency extends ModuleDependency {
 
 	/**
 	 * @param {string} context context directory
-	 * @returns {Module} a module
+	 * @returns {Module | null} a module
 	 */
 	createIgnoredModule(context) {
-		const RawDataUrlModule = getRawDataUrlModule();
-		return new RawDataUrlModule("data:,", `ignored-asset`, `(ignored asset)`);
+		return getIgnoredRawDataUrlModule();
 	}
 
 	/**

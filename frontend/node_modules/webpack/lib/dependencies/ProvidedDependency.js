@@ -17,6 +17,7 @@ const ModuleDependency = require("./ModuleDependency");
 /** @typedef {import("../DependencyTemplate").DependencyTemplateContext} DependencyTemplateContext */
 /** @typedef {import("../DependencyTemplates")} DependencyTemplates */
 /** @typedef {import("../ModuleGraph")} ModuleGraph */
+/** @typedef {import("../ModuleGraphConnection")} ModuleGraphConnection */
 /** @typedef {import("../RuntimeTemplate")} RuntimeTemplate */
 /** @typedef {import("../javascript/JavascriptParser").Range} Range */
 /** @typedef {import("../serialization/ObjectMiddleware").ObjectDeserializerContext} ObjectDeserializerContext */
@@ -63,7 +64,7 @@ class ProvidedDependency extends ModuleDependency {
 	 * @returns {(string[] | ReferencedExport)[]} referenced exports
 	 */
 	getReferencedExports(moduleGraph, runtime) {
-		let ids = this.ids;
+		const ids = this.ids;
 		if (ids.length === 0) return Dependency.EXPORTS_OBJECT_REFERENCED;
 		return [ids];
 	}
@@ -127,7 +128,9 @@ class ProvidedDependencyTemplate extends ModuleDependency.Template {
 		}
 	) {
 		const dep = /** @type {ProvidedDependency} */ (dependency);
-		const connection = moduleGraph.getConnection(dep);
+		const connection =
+			/** @type {ModuleGraphConnection} */
+			(moduleGraph.getConnection(dep));
 		const exportsInfo = moduleGraph.getExportsInfo(connection.module);
 		const usedName = exportsInfo.getUsedName(dep.ids, runtime);
 		initFragments.push(

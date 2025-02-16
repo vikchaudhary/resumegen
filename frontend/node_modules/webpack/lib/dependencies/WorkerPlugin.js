@@ -25,23 +25,34 @@ const {
 } = require("./HarmonyImportDependencyParserPlugin");
 const WorkerDependency = require("./WorkerDependency");
 
+/** @typedef {import("estree").CallExpression} CallExpression */
 /** @typedef {import("estree").Expression} Expression */
 /** @typedef {import("estree").ObjectExpression} ObjectExpression */
 /** @typedef {import("estree").Pattern} Pattern */
 /** @typedef {import("estree").Property} Property */
 /** @typedef {import("estree").SpreadElement} SpreadElement */
+/** @typedef {import("../../declarations/WebpackOptions").ChunkLoading} ChunkLoading */
 /** @typedef {import("../../declarations/WebpackOptions").JavascriptParserOptions} JavascriptParserOptions */
+/** @typedef {import("../../declarations/WebpackOptions").OutputModule} OutputModule */
+/** @typedef {import("../../declarations/WebpackOptions").WasmLoading} WasmLoading */
+/** @typedef {import("../../declarations/WebpackOptions").WorkerPublicPath} WorkerPublicPath */
 /** @typedef {import("../Compiler")} Compiler */
+/** @typedef {import("../Dependency").DependencyLocation} DependencyLocation */
 /** @typedef {import("../Entrypoint").EntryOptions} EntryOptions */
+/** @typedef {import("../NormalModule")} NormalModule */
 /** @typedef {import("../Parser").ParserState} ParserState */
 /** @typedef {import("../javascript/BasicEvaluatedExpression")} BasicEvaluatedExpression */
 /** @typedef {import("../javascript/JavascriptParser")} JavascriptParser */
 /** @typedef {import("../javascript/JavascriptParser")} Parser */
+/** @typedef {import("../javascript/JavascriptParser").Range} Range */
+/** @typedef {import("../util/createHash").Algorithm} Algorithm */
 /** @typedef {import("./HarmonyImportDependencyParserPlugin").HarmonySettings} HarmonySettings */
 
-const getUrl = module => {
-	return pathToFileURL(module.resource).toString();
-};
+/**
+ * @param {NormalModule} module module
+ * @returns {string} url
+ */
+const getUrl = module => pathToFileURL(module.resource).toString();
 
 const WorkerSpecifierTag = Symbol("worker specifier tag");
 
@@ -58,12 +69,19 @@ const workerIndexMap = new WeakMap();
 const PLUGIN_NAME = "WorkerPlugin";
 
 class WorkerPlugin {
+	/**
+	 * @param {ChunkLoading=} chunkLoading chunk loading
+	 * @param {WasmLoading=} wasmLoading wasm loading
+	 * @param {OutputModule=} module output module
+	 * @param {WorkerPublicPath=} workerPublicPath worker public path
+	 */
 	constructor(chunkLoading, wasmLoading, module, workerPublicPath) {
 		this._chunkLoading = chunkLoading;
 		this._wasmLoading = wasmLoading;
 		this._module = module;
 		this._workerPublicPath = workerPublicPath;
 	}
+
 	/**
 	 * Apply the plugin
 	 * @param {Compiler} compiler the compiler instance
@@ -99,7 +117,7 @@ class WorkerPlugin {
 				/**
 				 * @param {JavascriptParser} parser the parser
 				 * @param {Expression} expr expression
-				 * @returns {[BasicEvaluatedExpression, [number, number]]} parsed
+				 * @returns {[BasicEvaluatedExpression, [number, number]] | void} parsed
 				 */
 				const parseModuleUrl = (parser, expr) => {
 					if (
@@ -116,13 +134,19 @@ class WorkerPlugin {
 					const arg2Value = parser.evaluateExpression(arg2);
 					if (
 						!arg2Value.isString() ||
-						!arg2Value.string.startsWith("file://") ||
+						!(/** @type {string} */ (arg2Value.string).startsWith("file://")) ||
 						arg2Value.string !== getUrl(parser.state.module)
 					) {
 						return;
 					}
 					const arg1Value = parser.evaluateExpression(arg1);
-					return [arg1Value, [arg1.range[0], arg2.range[1]]];
+					return [
+						arg1Value,
+						[
+							/** @type {Range} */ (arg1.range)[0],
+							/** @type {Range} */ (arg2.range)[1]
+						]
+					];
 				};
 
 				/**
@@ -160,8 +184,9 @@ class WorkerPlugin {
 						}
 					}
 					const insertType = expr.properties.length > 0 ? "comma" : "single";
-					const insertLocation =
-						expr.properties[expr.properties.length - 1].range[1];
+					const insertLocation = /** @type {Range} */ (
+						expr.properties[expr.properties.length - 1].range
+					)[1];
 					return {
 						expressions,
 						otherElements,
@@ -182,6 +207,10 @@ class WorkerPlugin {
 					const options = !Array.isArray(parserOptions.worker)
 						? ["..."]
 						: parserOptions.worker;
+					/**
+					 * @param {CallExpression} expr expression
+					 * @returns {boolean | void} true when handled
+					 */
 					const handleNewWorker = expr => {
 						if (expr.arguments.length === 0 || expr.arguments.length > 2)
 							return;
@@ -209,10 +238,12 @@ class WorkerPlugin {
 									values: {},
 									spread: false,
 									insertType: arg2 ? "spread" : "argument",
-									insertLocation: arg2 ? arg2.range : arg1.range[1]
-							  };
+									insertLocation: arg2
+										? /** @type {Range} */ (arg2.range)
+										: /** @type {Range} */ (arg1.range)[1]
+								};
 						const { options: importOptions, errors: commentErrors } =
-							parser.parseCommentOptions(expr.range);
+							parser.parseCommentOptions(/** @type {Range} */ (expr.range));
 
 						if (commentErrors) {
 							for (const e of commentErrors) {
@@ -220,14 +251,14 @@ class WorkerPlugin {
 								parser.state.module.addWarning(
 									new CommentCompilationWarning(
 										`Compilation error while processing magic comment(-s): /*${comment.value}*/: ${e.message}`,
-										comment.loc
+										/** @type {DependencyLocation} */ (comment.loc)
 									)
 								);
 							}
 						}
 
 						/** @type {EntryOptions} */
-						let entryOptions = {};
+						const entryOptions = {};
 
 						if (importOptions) {
 							if (importOptions.webpackIgnore !== undefined) {
@@ -235,13 +266,11 @@ class WorkerPlugin {
 									parser.state.module.addWarning(
 										new UnsupportedFeatureWarning(
 											`\`webpackIgnore\` expected a boolean, but received: ${importOptions.webpackIgnore}.`,
-											expr.loc
+											/** @type {DependencyLocation} */ (expr.loc)
 										)
 									);
-								} else {
-									if (importOptions.webpackIgnore) {
-										return false;
-									}
+								} else if (importOptions.webpackIgnore) {
+									return false;
 								}
 							}
 							if (importOptions.webpackEntryOptions !== undefined) {
@@ -252,7 +281,7 @@ class WorkerPlugin {
 									parser.state.module.addWarning(
 										new UnsupportedFeatureWarning(
 											`\`webpackEntryOptions\` expected a object, but received: ${importOptions.webpackEntryOptions}.`,
-											expr.loc
+											/** @type {DependencyLocation} */ (expr.loc)
 										)
 									);
 								} else {
@@ -267,7 +296,7 @@ class WorkerPlugin {
 									parser.state.module.addWarning(
 										new UnsupportedFeatureWarning(
 											`\`webpackChunkName\` expected a string, but received: ${importOptions.webpackChunkName}.`,
-											expr.loc
+											/** @type {DependencyLocation} */ (expr.loc)
 										)
 									);
 								} else {
@@ -285,16 +314,19 @@ class WorkerPlugin {
 						}
 
 						if (entryOptions.runtime === undefined) {
-							let i = workerIndexMap.get(parser.state) || 0;
+							const i = workerIndexMap.get(parser.state) || 0;
 							workerIndexMap.set(parser.state, i + 1);
-							let name = `${cachedContextify(
+							const name = `${cachedContextify(
 								parser.state.module.identifier()
 							)}|${i}`;
-							const hash = createHash(compilation.outputOptions.hashFunction);
-							hash.update(name);
-							const digest = /** @type {string} */ (
-								hash.digest(compilation.outputOptions.hashDigest)
+							const hash = createHash(
+								/** @type {Algorithm} */
+								(compilation.outputOptions.hashFunction)
 							);
+							hash.update(name);
+							const digest =
+								/** @type {string} */
+								(hash.digest(compilation.outputOptions.hashDigest));
 							entryOptions.runtime = digest.slice(
 								0,
 								compilation.outputOptions.hashDigestLength
@@ -310,18 +342,22 @@ class WorkerPlugin {
 							}
 						});
 						block.loc = expr.loc;
-						const dep = new WorkerDependency(url.string, range, {
-							publicPath: this._workerPublicPath
-						});
-						dep.loc = expr.loc;
+						const dep = new WorkerDependency(
+							/** @type {string} */ (url.string),
+							range,
+							{
+								publicPath: this._workerPublicPath
+							}
+						);
+						dep.loc = /** @type {DependencyLocation} */ (expr.loc);
 						block.addDependency(dep);
 						parser.state.module.addBlock(block);
 
 						if (compilation.outputOptions.trustedTypes) {
 							const dep = new CreateScriptUrlDependency(
-								expr.arguments[0].range
+								/** @type {Range} */ (expr.arguments[0].range)
 							);
-							dep.loc = expr.loc;
+							dep.loc = /** @type {DependencyLocation} */ (expr.loc);
 							parser.state.module.addDependency(dep);
 						}
 
@@ -330,11 +366,12 @@ class WorkerPlugin {
 							if (options.type !== false) {
 								const dep = new ConstDependency(
 									this._module ? '"module"' : "undefined",
-									expr.range
+									/** @type {Range} */ (expr.range)
 								);
-								dep.loc = expr.loc;
+								dep.loc = /** @type {DependencyLocation} */ (expr.loc);
 								parser.state.module.addPresentationalDependency(dep);
-								expressions.type = undefined;
+								/** @type {TODO} */
+								(expressions).type = undefined;
 							}
 						} else if (insertType === "comma") {
 							if (this._module || hasSpreadInOptions) {
@@ -342,31 +379,29 @@ class WorkerPlugin {
 									`, type: ${this._module ? '"module"' : "undefined"}`,
 									insertLocation
 								);
-								dep.loc = expr.loc;
+								dep.loc = /** @type {DependencyLocation} */ (expr.loc);
 								parser.state.module.addPresentationalDependency(dep);
 							}
 						} else if (insertType === "spread") {
 							const dep1 = new ConstDependency(
 								"Object.assign({}, ",
-								insertLocation[0]
+								/** @type {Range} */ (insertLocation)[0]
 							);
 							const dep2 = new ConstDependency(
 								`, { type: ${this._module ? '"module"' : "undefined"} })`,
-								insertLocation[1]
+								/** @type {Range} */ (insertLocation)[1]
 							);
-							dep1.loc = expr.loc;
-							dep2.loc = expr.loc;
+							dep1.loc = /** @type {DependencyLocation} */ (expr.loc);
+							dep2.loc = /** @type {DependencyLocation} */ (expr.loc);
 							parser.state.module.addPresentationalDependency(dep1);
 							parser.state.module.addPresentationalDependency(dep2);
-						} else if (insertType === "argument") {
-							if (this._module) {
-								const dep = new ConstDependency(
-									', { type: "module" }',
-									insertLocation
-								);
-								dep.loc = expr.loc;
-								parser.state.module.addPresentationalDependency(dep);
-							}
+						} else if (insertType === "argument" && this._module) {
+							const dep = new ConstDependency(
+								', { type: "module" }',
+								insertLocation
+							);
+							dep.loc = /** @type {DependencyLocation} */ (expr.loc);
+							parser.state.module.addPresentationalDependency(dep);
 						}
 
 						parser.walkExpression(expr.callee);
@@ -382,6 +417,9 @@ class WorkerPlugin {
 
 						return true;
 					};
+					/**
+					 * @param {string} item item
+					 */
 					const processItem = item => {
 						if (
 							item.startsWith("*") &&
@@ -392,6 +430,12 @@ class WorkerPlugin {
 							const pattern = item.slice(1, firstDot);
 							const itemMembers = item.slice(firstDot + 1, -2);
 
+							parser.hooks.preDeclarator.tap(PLUGIN_NAME, (decl, statement) => {
+								if (decl.id.type === "Identifier" && decl.id.name === pattern) {
+									parser.tagVariable(decl.id.name, WorkerSpecifierTag);
+									return true;
+								}
+							});
 							parser.hooks.pattern.for(pattern).tap(PLUGIN_NAME, pattern => {
 								parser.tagVariable(pattern.name, WorkerSpecifierTag);
 								return true;
@@ -437,7 +481,9 @@ class WorkerPlugin {
 					};
 					for (const item of options) {
 						if (item === "...") {
-							DEFAULT_SYNTAX.forEach(processItem);
+							for (const itemFromDefault of DEFAULT_SYNTAX) {
+								processItem(itemFromDefault);
+							}
 						} else processItem(item);
 					}
 				};

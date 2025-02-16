@@ -308,7 +308,7 @@ class FlagDependencyUsagePlugin {
 						}
 					};
 					/** @type {RuntimeSpec} */
-					let globalRuntime = undefined;
+					let globalRuntime;
 					for (const [
 						entryName,
 						{ dependencies: deps, includeDependencies: includeDeps, options }
@@ -332,7 +332,9 @@ class FlagDependencyUsagePlugin {
 					}
 
 					while (queue.length) {
-						const [module, runtime] = queue.dequeue();
+						const [module, runtime] = /** @type {[Module, RuntimeSpec]} */ (
+							queue.dequeue()
+						);
 						processModule(module, runtime, false);
 					}
 					logger.timeEnd("trace exports usage in graph");

@@ -26,8 +26,10 @@ const ConstDependency = require("./ConstDependency");
 /** @typedef {import("estree").MemberExpression} MemberExpression */
 /** @typedef {import("../../declarations/WebpackOptions").JavascriptParserOptions} JavascriptParserOptions */
 /** @typedef {import("../Compiler")} Compiler */
+/** @typedef {import("../Dependency").DependencyLocation} DependencyLocation */
 /** @typedef {import("../NormalModule")} NormalModule */
 /** @typedef {import("../javascript/JavascriptParser")} Parser */
+/** @typedef {import("../javascript/JavascriptParser").Range} Range */
 
 const getCriticalDependencyWarning = memoize(() =>
 	require("./CriticalDependencyWarning")
@@ -47,9 +49,7 @@ class ImportMetaPlugin {
 				 * @param {NormalModule} module module
 				 * @returns {string} file url
 				 */
-				const getUrl = module => {
-					return pathToFileURL(module.resource).toString();
-				};
+				const getUrl = module => pathToFileURL(module.resource).toString();
 				/**
 				 * @param {Parser} parser parser parser
 				 * @param {JavascriptParserOptions} parserOptions parserOptions
@@ -64,27 +64,31 @@ class ImportMetaPlugin {
 							.for("import.meta")
 							.tap(PLUGIN_NAME, metaProperty => {
 								const dep = new ConstDependency(
-									importMetaName,
-									metaProperty.range
+									/** @type {string} */ (importMetaName),
+									/** @type {Range} */ (metaProperty.range)
 								);
-								dep.loc = metaProperty.loc;
+								dep.loc = /** @type {DependencyLocation} */ (metaProperty.loc);
 								parser.state.module.addPresentationalDependency(dep);
 								return true;
 							});
 						return;
 					}
 
-					/// import.meta direct ///
-					const webpackVersion = parseInt(
+					// import.meta direct
+					const webpackVersion = Number.parseInt(
 						require("../../package.json").version,
 						10
 					);
 					const importMetaUrl = () =>
 						JSON.stringify(getUrl(parser.state.module));
 					const importMetaWebpackVersion = () => JSON.stringify(webpackVersion);
+					/**
+					 * @param {string[]} members members
+					 * @returns {string} error message
+					 */
 					const importMetaUnknownProperty = members =>
 						`${Template.toNormalComment(
-							"unsupported import.meta." + members.join(".")
+							`unsupported import.meta.${members.join(".")}`
 						)} undefined${propertyAccess(members, 1)}`;
 					parser.hooks.typeof
 						.for("import.meta")
@@ -106,22 +110,26 @@ class ImportMetaPlugin {
 										new CriticalDependencyWarning(
 											"Accessing import.meta directly is unsupported (only property access or destructuring is supported)"
 										),
-										metaProperty.loc
+										/** @type {DependencyLocation} */ (metaProperty.loc)
 									)
 								);
 								const dep = new ConstDependency(
 									`${
-										parser.isAsiPosition(metaProperty.range[0]) ? ";" : ""
+										parser.isAsiPosition(
+											/** @type {Range} */ (metaProperty.range)[0]
+										)
+											? ";"
+											: ""
 									}({})`,
-									metaProperty.range
+									/** @type {Range} */ (metaProperty.range)
 								);
-								dep.loc = metaProperty.loc;
+								dep.loc = /** @type {DependencyLocation} */ (metaProperty.loc);
 								parser.state.module.addPresentationalDependency(dep);
 								return true;
 							}
 
 							let str = "";
-							for (const prop of referencedPropertiesInDestructuring) {
+							for (const { id: prop } of referencedPropertiesInDestructuring) {
 								switch (prop) {
 									case "url":
 										str += `url: ${importMetaUrl()},`;
@@ -136,8 +144,11 @@ class ImportMetaPlugin {
 										break;
 								}
 							}
-							const dep = new ConstDependency(`({${str}})`, metaProperty.range);
-							dep.loc = metaProperty.loc;
+							const dep = new ConstDependency(
+								`({${str}})`,
+								/** @type {Range} */ (metaProperty.range)
+							);
+							dep.loc = /** @type {DependencyLocation} */ (metaProperty.loc);
 							parser.state.module.addPresentationalDependency(dep);
 							return true;
 						});
@@ -149,7 +160,7 @@ class ImportMetaPlugin {
 						evaluateToIdentifier("import.meta", "import.meta", () => [], true)
 					);
 
-					/// import.meta.url ///
+					// import.meta.url
 					parser.hooks.typeof
 						.for("import.meta.url")
 						.tap(
@@ -159,8 +170,11 @@ class ImportMetaPlugin {
 					parser.hooks.expression
 						.for("import.meta.url")
 						.tap(PLUGIN_NAME, expr => {
-							const dep = new ConstDependency(importMetaUrl(), expr.range);
-							dep.loc = expr.loc;
+							const dep = new ConstDependency(
+								importMetaUrl(),
+								/** @type {Range} */ (expr.range)
+							);
+							dep.loc = /** @type {DependencyLocation} */ (expr.loc);
 							parser.state.module.addPresentationalDependency(dep);
 							return true;
 						});
@@ -169,13 +183,13 @@ class ImportMetaPlugin {
 						.tap(PLUGIN_NAME, evaluateToString("string"));
 					parser.hooks.evaluateIdentifier
 						.for("import.meta.url")
-						.tap(PLUGIN_NAME, expr => {
-							return new BasicEvaluatedExpression()
+						.tap(PLUGIN_NAME, expr =>
+							new BasicEvaluatedExpression()
 								.setString(getUrl(parser.state.module))
-								.setRange(expr.range);
-						});
+								.setRange(/** @type {Range} */ (expr.range))
+						);
 
-					/// import.meta.webpack ///
+					// import.meta.webpack
 					parser.hooks.typeof
 						.for("import.meta.webpack")
 						.tap(
@@ -195,15 +209,15 @@ class ImportMetaPlugin {
 						.for("import.meta.webpack")
 						.tap(PLUGIN_NAME, evaluateToNumber(webpackVersion));
 
-					/// Unknown properties ///
+					// Unknown properties
 					parser.hooks.unhandledExpressionMemberChain
 						.for("import.meta")
 						.tap(PLUGIN_NAME, (expr, members) => {
 							const dep = new ConstDependency(
 								importMetaUnknownProperty(members),
-								expr.range
+								/** @type {Range} */ (expr.range)
 							);
-							dep.loc = expr.loc;
+							dep.loc = /** @type {DependencyLocation} */ (expr.loc);
 							parser.state.module.addPresentationalDependency(dep);
 							return true;
 						});
@@ -220,7 +234,7 @@ class ImportMetaPlugin {
 							) {
 								return new BasicEvaluatedExpression()
 									.setUndefined()
-									.setRange(expr.range);
+									.setRange(/** @type {Range} */ (expr.range));
 							}
 						});
 				};

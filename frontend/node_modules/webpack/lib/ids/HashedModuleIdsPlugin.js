@@ -36,7 +36,7 @@ class HashedModuleIdsPlugin {
 
 		/** @type {HashedModuleIdsPluginOptions} */
 		this.options = {
-			context: null,
+			context: undefined,
 			hashFunction: "md4",
 			hashDigest: "base64",
 			hashDigestLength: 4,
@@ -64,7 +64,11 @@ class HashedModuleIdsPlugin {
 				);
 				for (const module of modulesInNaturalOrder) {
 					const ident = getFullModuleName(module, context, compiler.root);
-					const hash = createHash(options.hashFunction);
+					const hash = createHash(
+						/** @type {NonNullable<HashedModuleIdsPluginOptions["hashFunction"]>} */ (
+							options.hashFunction
+						)
+					);
 					hash.update(ident || "");
 					const hashId = /** @type {string} */ (
 						hash.digest(options.hashDigest)

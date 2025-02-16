@@ -32,7 +32,8 @@ logging.basicConfig(format=app.config['LOGGING_FORMAT'], level=app.config['LOGGI
 
 # Global variables
 # WARNING! Do not publish this code with your secret OpenAI key!
-openai.api_key = ''
+openai.api_key = os.getenv("OPENAI_KEY")
+
 
 # Configure SQLite database
 db_file = 'keyguru.db'

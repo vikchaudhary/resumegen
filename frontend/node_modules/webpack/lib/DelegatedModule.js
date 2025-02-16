@@ -7,6 +7,7 @@
 
 const { OriginalSource, RawSource } = require("webpack-sources");
 const Module = require("./Module");
+const { JS_TYPES } = require("./ModuleSourceTypesConstants");
 const { JAVASCRIPT_MODULE_TYPE_DYNAMIC } = require("./ModuleTypeConstants");
 const RuntimeGlobals = require("./RuntimeGlobals");
 const DelegatedSourceDependency = require("./dependencies/DelegatedSourceDependency");
@@ -19,6 +20,7 @@ const makeSerializable = require("./util/makeSerializable");
 /** @typedef {import("./Compilation")} Compilation */
 /** @typedef {import("./Dependency").UpdateHashContext} UpdateHashContext */
 /** @typedef {import("./DependencyTemplates")} DependencyTemplates */
+/** @typedef {import("./Generator").SourceTypes} SourceTypes */
 /** @typedef {import("./LibManifestPlugin").ManifestModuleData} ManifestModuleData */
 /** @typedef {import("./Module").CodeGenerationContext} CodeGenerationContext */
 /** @typedef {import("./Module").CodeGenerationResult} CodeGenerationResult */
@@ -35,13 +37,23 @@ const makeSerializable = require("./util/makeSerializable");
 /** @typedef {import("./util/Hash")} Hash */
 /** @typedef {import("./util/fs").InputFileSystem} InputFileSystem */
 
-const TYPES = new Set(["javascript"]);
+/** @typedef {string} SourceRequest */
+/** @typedef {"require" | "object"} Type */
+/** @typedef {TODO} Data */
+
 const RUNTIME_REQUIREMENTS = new Set([
 	RuntimeGlobals.module,
 	RuntimeGlobals.require
 ]);
 
 class DelegatedModule extends Module {
+	/**
+	 * @param {SourceRequest} sourceRequest source request
+	 * @param {Data} data data
+	 * @param {Type} type type
+	 * @param {string} userRequest user request
+	 * @param {string | Module} originalRequest original request
+	 */
 	constructor(sourceRequest, data, type, userRequest, originalRequest) {
 		super(JAVASCRIPT_MODULE_TYPE_DYNAMIC, null);
 
@@ -51,7 +63,7 @@ class DelegatedModule extends Module {
 		this.delegationType = type;
 		this.userRequest = userRequest;
 		this.originalRequest = originalRequest;
-		/** @type {ManifestModuleData} */
+		/** @type {ManifestModuleData | undefined} */
 		this.delegateData = data;
 
 		// Build info
@@ -59,10 +71,10 @@ class DelegatedModule extends Module {
 	}
 
 	/**
-	 * @returns {Set<string>} types available (do not mutate)
+	 * @returns {SourceTypes} types available (do not mutate)
 	 */
 	getSourceTypes() {
-		return TYPES;
+		return JS_TYPES;
 	}
 
 	/**
@@ -110,7 +122,8 @@ class DelegatedModule extends Module {
 	 * @returns {void}
 	 */
 	build(options, compilation, resolver, fs, callback) {
-		this.buildMeta = { ...this.delegateData.buildMeta };
+		const delegateData = /** @type {ManifestModuleData} */ (this.delegateData);
+		this.buildMeta = { ...delegateData.buildMeta };
 		this.buildInfo = {};
 		this.dependencies.length = 0;
 		this.delegatedSourceDependency = new DelegatedSourceDependency(
@@ -118,7 +131,7 @@ class DelegatedModule extends Module {
 		);
 		this.addDependency(this.delegatedSourceDependency);
 		this.addDependency(
-			new StaticExportsDependency(this.delegateData.exports || true, false)
+			new StaticExportsDependency(delegateData.exports || true, false)
 		);
 		callback();
 	}
@@ -202,6 +215,10 @@ class DelegatedModule extends Module {
 		super.serialize(context);
 	}
 
+	/**
+	 * @param {ObjectDeserializerContext} context context\
+	 * @returns {DelegatedModule} DelegatedModule
+	 */
 	static deserialize(context) {
 		const { read } = context;
 		const obj = new DelegatedModule(

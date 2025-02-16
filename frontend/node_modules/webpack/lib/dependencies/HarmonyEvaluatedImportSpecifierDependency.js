@@ -12,7 +12,9 @@ const HarmonyImportSpecifierDependency = require("./HarmonyImportSpecifierDepend
 /** @typedef {import("../ChunkGraph")} ChunkGraph */
 /** @typedef {import("../Dependency")} Dependency */
 /** @typedef {import("../DependencyTemplate").DependencyTemplateContext} DependencyTemplateContext */
-/** @typedef {import("../javascript/JavascriptParser").Assertions} Assertions */
+/** @typedef {import("../Module").BuildMeta} BuildMeta */
+/** @typedef {import("../ModuleGraphConnection")} ModuleGraphConnection */
+/** @typedef {import("../javascript/JavascriptParser").ImportAttributes} ImportAttributes */
 /** @typedef {import("../javascript/JavascriptParser").Range} Range */
 /** @typedef {import("../serialization/ObjectMiddleware").ObjectDeserializerContext} ObjectDeserializerContext */
 /** @typedef {import("../serialization/ObjectMiddleware").ObjectSerializerContext} ObjectSerializerContext */
@@ -31,11 +33,11 @@ class HarmonyEvaluatedImportSpecifierDependency extends HarmonyImportSpecifierDe
 	 * @param {TODO} ids ids
 	 * @param {TODO} name name
 	 * @param {Range} range location in source code
-	 * @param {Assertions} assertions assertions
+	 * @param {ImportAttributes} attributes import assertions
 	 * @param {string} operator operator
 	 */
-	constructor(request, sourceOrder, ids, name, range, assertions, operator) {
-		super(request, sourceOrder, ids, name, range, false, assertions, []);
+	constructor(request, sourceOrder, ids, name, range, attributes, operator) {
+		super(request, sourceOrder, ids, name, range, false, attributes, []);
 		this.operator = operator;
 	}
 
@@ -85,15 +87,20 @@ HarmonyEvaluatedImportSpecifierDependency.Template = class HarmonyEvaluatedImpor
 		// Skip rendering depending when dependency is conditional
 		if (connection && !connection.isTargetActive(runtime)) return;
 
-		const exportsInfo = moduleGraph.getExportsInfo(connection.module);
+		const exportsInfo = moduleGraph.getExportsInfo(
+			/** @type {ModuleGraphConnection} */ (connection).module
+		);
 		const ids = dep.getIds(moduleGraph);
 
 		let value;
 
-		const exportsType = connection.module.getExportsType(
-			moduleGraph,
-			module.buildMeta.strictHarmonyModule
-		);
+		const exportsType =
+			/** @type {ModuleGraphConnection} */
+			(connection).module.getExportsType(
+				moduleGraph,
+				/** @type {BuildMeta} */
+				(module.buildMeta).strictHarmonyModule
+			);
 		switch (exportsType) {
 			case "default-with-named": {
 				if (ids[0] === "default") {
@@ -105,11 +112,10 @@ HarmonyEvaluatedImportSpecifierDependency.Template = class HarmonyEvaluatedImpor
 				break;
 			}
 			case "namespace": {
-				if (ids[0] === "__esModule") {
-					value = ids.length === 1 || undefined;
-				} else {
-					value = exportsInfo.isExportProvided(ids);
-				}
+				value =
+					ids[0] === "__esModule"
+						? ids.length === 1 || undefined
+						: exportsInfo.isExportProvided(ids);
 				break;
 			}
 			case "dynamic": {

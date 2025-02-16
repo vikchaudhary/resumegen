@@ -5,11 +5,13 @@
 
 "use strict";
 
+const EnvironmentNotSupportAsyncWarning = require("../EnvironmentNotSupportAsyncWarning");
 const { JAVASCRIPT_MODULE_TYPE_ESM } = require("../ModuleTypeConstants");
 const DynamicExports = require("./DynamicExports");
 const HarmonyCompatibilityDependency = require("./HarmonyCompatibilityDependency");
 const HarmonyExports = require("./HarmonyExports");
 
+/** @typedef {import("../Module").BuildMeta} BuildMeta */
 /** @typedef {import("../javascript/JavascriptParser")} JavascriptParser */
 /** @typedef {import("./HarmonyModulesPlugin").HarmonyModulesPluginOptions} HarmonyModulesPluginOptions */
 
@@ -64,7 +66,7 @@ module.exports = class HarmonyDetectionParserPlugin {
 			const module = parser.state.module;
 			if (!this.topLevelAwait) {
 				throw new Error(
-					"The top-level-await experiment is not enabled (set experiments.topLevelAwait: true to enabled it)"
+					"The top-level-await experiment is not enabled (set experiments.topLevelAwait: true to enable it)"
 				);
 			}
 			if (!HarmonyExports.isEnabled(parser.state)) {
@@ -72,7 +74,13 @@ module.exports = class HarmonyDetectionParserPlugin {
 					"Top-level-await is only supported in EcmaScript Modules"
 				);
 			}
-			module.buildMeta.async = true;
+			/** @type {BuildMeta} */
+			(module.buildMeta).async = true;
+			EnvironmentNotSupportAsyncWarning.check(
+				module,
+				parser.state.compilation.runtimeTemplate,
+				"topLevelAwait"
+			);
 		});
 
 		/**

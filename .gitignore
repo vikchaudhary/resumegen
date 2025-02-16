@@ -3,6 +3,7 @@ frontend/build
 
 # Ignore Python cache
 __pycache__/
+*.pyc
 
 # Ignore Node.js cache
 .cache/

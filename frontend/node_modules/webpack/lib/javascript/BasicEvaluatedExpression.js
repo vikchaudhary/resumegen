@@ -5,7 +5,7 @@
 
 "use strict";
 
-/** @typedef {import("estree").Node} EsTreeNode */
+/** @typedef {import("estree").Node} Node */
 /** @typedef {import("./JavascriptParser").Range} Range */
 /** @typedef {import("./JavascriptParser").VariableInfoInterface} VariableInfoInterface */
 
@@ -27,7 +27,7 @@ const TypeBigInt = 13;
 class BasicEvaluatedExpression {
 	constructor() {
 		this.type = TypeUnknown;
-		/** @type {[number, number]} */
+		/** @type {Range | undefined} */
 		this.range = undefined;
 		/** @type {boolean} */
 		this.falsy = false;
@@ -57,23 +57,23 @@ class BasicEvaluatedExpression {
 		this.items = undefined;
 		/** @type {BasicEvaluatedExpression[] | undefined} */
 		this.options = undefined;
-		/** @type {BasicEvaluatedExpression | undefined} */
+		/** @type {BasicEvaluatedExpression | undefined | null} */
 		this.prefix = undefined;
-		/** @type {BasicEvaluatedExpression | undefined} */
+		/** @type {BasicEvaluatedExpression | undefined | null} */
 		this.postfix = undefined;
-		/** @type {BasicEvaluatedExpression[]} */
+		/** @type {BasicEvaluatedExpression[] | undefined} */
 		this.wrappedInnerExpressions = undefined;
 		/** @type {string | VariableInfoInterface | undefined} */
 		this.identifier = undefined;
-		/** @type {string | VariableInfoInterface} */
+		/** @type {string | VariableInfoInterface | undefined} */
 		this.rootInfo = undefined;
-		/** @type {() => string[]} */
+		/** @type {(() => string[]) | undefined} */
 		this.getMembers = undefined;
-		/** @type {() => boolean[]} */
+		/** @type {(() => boolean[]) | undefined} */
 		this.getMembersOptionals = undefined;
-		/** @type {() => Range[]} */
+		/** @type {(() => Range[]) | undefined} */
 		this.getMemberRanges = undefined;
-		/** @type {EsTreeNode} */
+		/** @type {Node | undefined} */
 		this.expression = undefined;
 	}
 
@@ -184,7 +184,7 @@ class BasicEvaluatedExpression {
 	asCompileTimeValue() {
 		switch (this.type) {
 			case TypeUndefined:
-				return undefined;
+				return;
 			case TypeNull:
 				return null;
 			case TypeString:
@@ -252,7 +252,6 @@ class BasicEvaluatedExpression {
 			const str = this.asString();
 			if (typeof str === "string") return str !== "";
 		}
-		return undefined;
 	}
 
 	/**
@@ -275,8 +274,6 @@ class BasicEvaluatedExpression {
 		if (this.isConstArray()) return false;
 		if (this.isTemplateString()) return false;
 		if (this.isRegExp()) return false;
-
-		return undefined;
 	}
 
 	/**
@@ -292,10 +289,12 @@ class BasicEvaluatedExpression {
 		if (this.isBigInt()) return `${this.bigint}`;
 		if (this.isRegExp()) return `${this.regExp}`;
 		if (this.isArray()) {
-			let array = [];
-			for (const item of this.items) {
+			const array = [];
+			for (const item of /** @type {BasicEvaluatedExpression[]} */ (
+				this.items
+			)) {
 				const itemStr = item.asString();
-				if (itemStr === undefined) return undefined;
+				if (itemStr === undefined) return;
 				array.push(itemStr);
 			}
 			return `${array}`;
@@ -303,16 +302,21 @@ class BasicEvaluatedExpression {
 		if (this.isConstArray()) return `${this.array}`;
 		if (this.isTemplateString()) {
 			let str = "";
-			for (const part of this.parts) {
+			for (const part of /** @type {BasicEvaluatedExpression[]} */ (
+				this.parts
+			)) {
 				const partStr = part.asString();
-				if (partStr === undefined) return undefined;
+				if (partStr === undefined) return;
 				str += partStr;
 			}
 			return str;
 		}
-		return undefined;
 	}
 
+	/**
+	 * @param {string} string value
+	 * @returns {BasicEvaluatedExpression} basic evaluated expression
+	 */
 	setString(string) {
 		this.type = TypeString;
 		this.string = string;
@@ -382,7 +386,6 @@ class BasicEvaluatedExpression {
 
 	/**
 	 * Set's the value of this expression to a particular identifier and its members.
-	 *
 	 * @param {string | VariableInfoInterface} identifier identifier to set
 	 * @param {string | VariableInfoInterface} rootInfo root info
 	 * @param {() => string[]} getMembers members
@@ -409,10 +412,9 @@ class BasicEvaluatedExpression {
 
 	/**
 	 * Wraps an array of expressions with a prefix and postfix expression.
-	 *
-	 * @param {BasicEvaluatedExpression | null} prefix Expression to be added before the innerExpressions
-	 * @param {BasicEvaluatedExpression} postfix Expression to be added after the innerExpressions
-	 * @param {BasicEvaluatedExpression[]} innerExpressions Expressions to be wrapped
+	 * @param {BasicEvaluatedExpression | null | undefined} prefix Expression to be added before the innerExpressions
+	 * @param {BasicEvaluatedExpression | null | undefined} postfix Expression to be added after the innerExpressions
+	 * @param {BasicEvaluatedExpression[] | undefined} innerExpressions Expressions to be wrapped
 	 * @returns {this} this
 	 */
 	setWrapped(prefix, postfix, innerExpressions) {
@@ -426,7 +428,6 @@ class BasicEvaluatedExpression {
 
 	/**
 	 * Stores the options of a conditional expression.
-	 *
 	 * @param {BasicEvaluatedExpression[]} options optional (consequent/alternate) expressions to be set
 	 * @returns {this} this
 	 */
@@ -439,7 +440,6 @@ class BasicEvaluatedExpression {
 
 	/**
 	 * Adds options to a conditional expression.
-	 *
 	 * @param {BasicEvaluatedExpression[]} options optional (consequent/alternate) expressions to be added
 	 * @returns {this} this
 	 */
@@ -457,7 +457,6 @@ class BasicEvaluatedExpression {
 
 	/**
 	 * Set's the value of this expression to an array of expressions.
-	 *
 	 * @param {BasicEvaluatedExpression[]} items expressions to set
 	 * @returns {this} this
 	 */
@@ -470,7 +469,6 @@ class BasicEvaluatedExpression {
 
 	/**
 	 * Set's the value of this expression to an array of strings.
-	 *
 	 * @param {string[]} array array to set
 	 * @returns {this} this
 	 */
@@ -484,7 +482,6 @@ class BasicEvaluatedExpression {
 	/**
 	 * Set's the value of this expression to a processed/unprocessed template string. Used
 	 * for evaluating TemplateLiteral expressions in the JavaScript Parser.
-	 *
 	 * @param {BasicEvaluatedExpression[]} quasis template string quasis
 	 * @param {BasicEvaluatedExpression[]} parts template string parts
 	 * @param {"cooked" | "raw"} kind template string kind
@@ -514,7 +511,6 @@ class BasicEvaluatedExpression {
 
 	/**
 	 * Set's the value of the expression to nullish.
-	 *
 	 * @param {boolean} value true, if the expression is nullish
 	 * @returns {this} this
 	 */
@@ -528,7 +524,6 @@ class BasicEvaluatedExpression {
 
 	/**
 	 * Set's the range for the expression.
-	 *
 	 * @param {[number, number]} range range to set
 	 * @returns {this} this
 	 */
@@ -539,7 +534,6 @@ class BasicEvaluatedExpression {
 
 	/**
 	 * Set whether or not the expression has side effects.
-	 *
 	 * @param {boolean} sideEffects true, if the expression has side effects
 	 * @returns {this} this
 	 */
@@ -550,8 +544,7 @@ class BasicEvaluatedExpression {
 
 	/**
 	 * Set the expression node for the expression.
-	 *
-	 * @param {EsTreeNode} expression expression
+	 * @param {Node | undefined} expression expression
 	 * @returns {this} this
 	 */
 	setExpression(expression) {

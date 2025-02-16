@@ -10,10 +10,13 @@ const Template = require("../Template");
 const { compareModulesByIdentifier } = require("../util/comparators");
 const WebAssemblyUtils = require("./WebAssemblyUtils");
 
+/** @typedef {import("@webassemblyjs/ast").Signature} Signature */
 /** @typedef {import("../Chunk")} Chunk */
 /** @typedef {import("../ChunkGraph")} ChunkGraph */
+/** @typedef {import("../ChunkGraph").ModuleId} ModuleId */
 /** @typedef {import("../Compilation")} Compilation */
 /** @typedef {import("../Module")} Module */
+/** @typedef {import("../Module").ReadOnlyRuntimeRequirements} ReadOnlyRuntimeRequirements */
 /** @typedef {import("../ModuleGraph")} ModuleGraph */
 /** @typedef {import("../util/runtime").RuntimeSpec} RuntimeSpec */
 
@@ -60,6 +63,7 @@ const generateImportObject = (
 	runtime
 ) => {
 	const moduleGraph = chunkGraph.moduleGraph;
+	/** @type {Map<string, string | number>} */
 	const waitForInstances = new Map();
 	const properties = [];
 	const usedWasmDependencies = WebAssemblyUtils.getUsedDependencies(
@@ -84,32 +88,42 @@ const generateImportObject = (
 
 		if (direct) {
 			const instanceVar = `m${waitForInstances.size}`;
-			waitForInstances.set(instanceVar, chunkGraph.getModuleId(importedModule));
+			waitForInstances.set(
+				instanceVar,
+				/** @type {ModuleId} */
+				(chunkGraph.getModuleId(/** @type {Module} */ (importedModule)))
+			);
 			properties.push({
 				module,
 				name,
 				value: `${instanceVar}[${JSON.stringify(usedName)}]`
 			});
 		} else {
-			const params = description.signature.params.map(
-				(param, k) => "p" + k + param.valtype
-			);
+			const params =
+				/** @type {Signature} */
+				(description.signature).params.map(
+					(param, k) => `p${k}${param.valtype}`
+				);
 
 			const mod = `${RuntimeGlobals.moduleCache}[${JSON.stringify(
-				chunkGraph.getModuleId(importedModule)
+				chunkGraph.getModuleId(/** @type {Module} */ (importedModule))
 			)}]`;
 			const modExports = `${mod}.exports`;
 
 			const cache = `wasmImportedFuncCache${declarations.length}`;
 			declarations.push(`var ${cache};`);
 
+			const modCode =
+				/** @type {Module} */
+				(importedModule).type.startsWith("webassembly")
+					? `${mod} ? ${modExports}[${JSON.stringify(usedName)}] : `
+					: "";
+
 			properties.push({
 				module,
 				name,
 				value: Template.asString([
-					(importedModule.type.startsWith("webassembly")
-						? `${mod} ? ${modExports}[${JSON.stringify(usedName)}] : `
-						: "") + `function(${params}) {`,
+					`${modCode}function(${params}) {`,
 					Template.indent([
 						`if(${cache} === undefined) ${cache} = ${modExports};`,
 						`return ${cache}[${JSON.stringify(usedName)}](${params});`
@@ -130,6 +144,7 @@ const generateImportObject = (
 			"};"
 		];
 	} else {
+		/** @type {Map<string, Array<{ name: string, value: string }>>} */
 		const propertiesByModule = new Map();
 		for (const p of properties) {
 			let list = propertiesByModule.get(p.module);
@@ -141,15 +156,15 @@ const generateImportObject = (
 		importObject = [
 			"return {",
 			Template.indent([
-				Array.from(propertiesByModule, ([module, list]) => {
-					return Template.asString([
+				Array.from(propertiesByModule, ([module, list]) =>
+					Template.asString([
 						`${JSON.stringify(module)}: {`,
 						Template.indent([
 							list.map(p => `${JSON.stringify(p.name)}: ${p.value}`).join(",\n")
 						]),
 						"}"
-					]);
-				}).join(",\n")
+					])
+				).join(",\n")
 			]),
 			"};"
 		];
@@ -187,21 +202,20 @@ const generateImportObject = (
 			]),
 			"},"
 		]);
-	} else {
-		return Template.asString([
-			`${moduleIdStringified}: function() {`,
-			Template.indent(importObject),
-			"},"
-		]);
 	}
+	return Template.asString([
+		`${moduleIdStringified}: function() {`,
+		Template.indent(importObject),
+		"},"
+	]);
 };
 
 /**
- * @typedef {Object} WasmChunkLoadingRuntimeModuleOptions
+ * @typedef {object} WasmChunkLoadingRuntimeModuleOptions
  * @property {(path: string) => string} generateLoadBinaryCode
  * @property {boolean} [supportsStreaming]
  * @property {boolean} [mangleImports]
- * @property {Set<string>} runtimeRequirements
+ * @property {ReadOnlyRuntimeRequirements} runtimeRequirements
  */
 
 class WasmChunkLoadingRuntimeModule extends RuntimeModule {
@@ -222,27 +236,30 @@ class WasmChunkLoadingRuntimeModule extends RuntimeModule {
 	}
 
 	/**
-	 * @returns {string} runtime code
+	 * @returns {string | null} runtime code
 	 */
 	generate() {
-		const { chunkGraph, compilation, chunk, mangleImports } = this;
-		const { moduleGraph, outputOptions } = compilation;
 		const fn = RuntimeGlobals.ensureChunkHandlers;
 		const withHmr = this._runtimeRequirements.has(
 			RuntimeGlobals.hmrDownloadUpdateHandlers
 		);
+		const compilation = /** @type {Compilation} */ (this.compilation);
+		const { moduleGraph, outputOptions } = compilation;
+		const chunkGraph = /** @type {ChunkGraph} */ (this.chunkGraph);
+		const chunk = /** @type {Chunk} */ (this.chunk);
 		const wasmModules = getAllWasmModules(moduleGraph, chunkGraph, chunk);
+		const { mangleImports } = this;
 		/** @type {string[]} */
 		const declarations = [];
-		const importObjects = wasmModules.map(module => {
-			return generateImportObject(
+		const importObjects = wasmModules.map(module =>
+			generateImportObject(
 				chunkGraph,
 				module,
-				this.mangleImports,
+				mangleImports,
 				declarations,
 				chunk.runtime
-			);
-		});
+			)
+		);
 		const chunkModuleIdMap = chunkGraph.getChunkModuleIdMap(chunk, m =>
 			m.type.startsWith("webassembly")
 		);
@@ -315,7 +332,7 @@ class WasmChunkLoadingRuntimeModule extends RuntimeModule {
 			`${fn}.wasm = function(chunkId, promises) {`,
 			Template.indent([
 				"",
-				`var wasmModules = wasmModuleMap[chunkId] || [];`,
+				"var wasmModules = wasmModuleMap[chunkId] || [];",
 				"",
 				"wasmModules.forEach(function(wasmModuleId, idx) {",
 				Template.indent([
@@ -326,7 +343,7 @@ class WasmChunkLoadingRuntimeModule extends RuntimeModule {
 					Template.indent(["promises.push(installedWasmModuleData);"]),
 					"else {",
 					Template.indent([
-						`var importObject = wasmImportObjects[wasmModuleId]();`,
+						"var importObject = wasmImportObjects[wasmModuleId]();",
 						`var req = ${this.generateLoadBinaryCode(wasmModuleSrcPath)};`,
 						"var promise;",
 						this.supportsStreaming
@@ -347,7 +364,7 @@ class WasmChunkLoadingRuntimeModule extends RuntimeModule {
 											"importObject"
 										)});`
 									])
-							  ])
+								])
 							: Template.asString([
 									"if(importObject && typeof importObject.then === 'function') {",
 									Template.indent([
@@ -365,7 +382,7 @@ class WasmChunkLoadingRuntimeModule extends RuntimeModule {
 										]),
 										"});"
 									])
-							  ]),
+								]),
 						"} else {",
 						Template.indent([
 							"var bytesPromise = req.then(function(x) { return x.arrayBuffer(); });",

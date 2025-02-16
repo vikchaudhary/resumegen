@@ -17,6 +17,7 @@ const AbstractLibraryPlugin = require("./AbstractLibraryPlugin");
 /** @typedef {import("../../declarations/WebpackOptions").LibraryOptions} LibraryOptions */
 /** @typedef {import("../../declarations/WebpackOptions").LibraryType} LibraryType */
 /** @typedef {import("../Chunk")} Chunk */
+/** @typedef {import("../Compilation")} Compilation */
 /** @typedef {import("../Compilation").ChunkHashContext} ChunkHashContext */
 /** @typedef {import("../Compiler")} Compiler */
 /** @typedef {import("../Module")} Module */
@@ -35,9 +36,8 @@ const IDENTIFIER_REGEX =
  * @param {string} name name to be validated
  * @returns {boolean} true, when valid
  */
-const isNameValid = name => {
-	return !KEYWORD_REGEX.test(name) && IDENTIFIER_REGEX.test(name);
-};
+const isNameValid = name =>
+	!KEYWORD_REGEX.test(name) && IDENTIFIER_REGEX.test(name);
 
 /**
  * @param {string[]} accessor variable plus properties
@@ -59,6 +59,7 @@ const accessWithInit = (accessor, existingLength, initLast = false) => {
 	let i = 1;
 
 	// all properties printed so far (excluding base)
+	/** @type {string[] | undefined} */
 	let propsSoFar;
 
 	// if there is existingLength, print all properties until this position as property access
@@ -89,7 +90,7 @@ const accessWithInit = (accessor, existingLength, initLast = false) => {
 };
 
 /**
- * @typedef {Object} AssignLibraryPluginOptions
+ * @typedef {object} AssignLibraryPluginOptions
  * @property {LibraryType} type
  * @property {string[] | "global"} prefix name prefix
  * @property {string | false} declare declare name as variable
@@ -98,7 +99,7 @@ const accessWithInit = (accessor, existingLength, initLast = false) => {
  */
 
 /**
- * @typedef {Object} AssignLibraryPluginParsed
+ * @typedef {object} AssignLibraryPluginParsed
  * @property {string | string[]} name
  * @property {string | string[] | undefined} export
  */
@@ -134,15 +135,14 @@ class AssignLibraryPlugin extends AbstractLibraryPlugin {
 					`Library name must be a string or string array. ${AbstractLibraryPlugin.COMMON_LIBRARY_NAME_MESSAGE}`
 				);
 			}
-		} else {
-			if (name && typeof name !== "string" && !Array.isArray(name)) {
-				throw new Error(
-					`Library name must be a string, string array or unset. ${AbstractLibraryPlugin.COMMON_LIBRARY_NAME_MESSAGE}`
-				);
-			}
+		} else if (name && typeof name !== "string" && !Array.isArray(name)) {
+			throw new Error(
+				`Library name must be a string, string array or unset. ${AbstractLibraryPlugin.COMMON_LIBRARY_NAME_MESSAGE}`
+			);
 		}
+		const _name = /** @type {string | string[]} */ (name);
 		return {
-			name: /** @type {string|string[]=} */ (name),
+			name: _name,
 			export: library.export
 		};
 	}
@@ -173,12 +173,22 @@ class AssignLibraryPlugin extends AbstractLibraryPlugin {
 		moduleGraph.addExtraReason(module, "used as library export");
 	}
 
+	/**
+	 * @param {Compilation} compilation the compilation
+	 * @returns {string[]} the prefix
+	 */
 	_getPrefix(compilation) {
 		return this.prefix === "global"
 			? [compilation.runtimeTemplate.globalObject]
 			: this.prefix;
 	}
 
+	/**
+	 * @param {AssignLibraryPluginParsed} options the library options
+	 * @param {Chunk} chunk the chunk
+	 * @param {Compilation} compilation the compilation
+	 * @returns {Array<string>} the resolved full name
+	 */
 	_getResolvedFullName(options, chunk, compilation) {
 		const prefix = this._getPrefix(compilation);
 		const fullName = options.name ? prefix.concat(options.name) : prefix;
@@ -283,7 +293,7 @@ class AssignLibraryPlugin extends AbstractLibraryPlugin {
 		const exportAccess = options.export
 			? propertyAccess(
 					Array.isArray(options.export) ? options.export : [options.export]
-			  )
+				)
 			: "";
 		const result = new ConcatSource(source);
 		if (staticExports) {
@@ -311,7 +321,7 @@ class AssignLibraryPlugin extends AbstractLibraryPlugin {
 					true
 				)};\n`
 			);
-			/** @type {String} */
+			/** @type {string} */
 			let exports = RuntimeGlobals.exports;
 			if (exportAccess) {
 				result.add(
@@ -320,7 +330,7 @@ class AssignLibraryPlugin extends AbstractLibraryPlugin {
 				exports = "__webpack_exports_export__";
 			}
 			result.add(
-				`for(var i in ${exports}) __webpack_export_target__[i] = ${exports}[i];\n`
+				`for(var __webpack_i__ in ${exports}) __webpack_export_target__[__webpack_i__] = ${exports}[__webpack_i__];\n`
 			);
 			result.add(
 				`if(${exports}.__esModule) Object.defineProperty(__webpack_export_target__, "__esModule", { value: true });\n`
@@ -344,7 +354,7 @@ class AssignLibraryPlugin extends AbstractLibraryPlugin {
 	 * @returns {void}
 	 */
 	runtimeRequirements(chunk, set, libraryContext) {
-		// we don't need to return exports from runtime
+		set.add(RuntimeGlobals.exports);
 	}
 
 	/**

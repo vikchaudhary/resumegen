@@ -8,10 +8,14 @@
 const { getEntryRuntime, mergeRuntimeOwned } = require("./util/runtime");
 
 /** @typedef {import("./Compiler")} Compiler */
+/** @typedef {import("./Module").FactoryMeta} FactoryMeta */
 /** @typedef {import("./util/runtime").RuntimeSpec} RuntimeSpec */
 
 const PLUGIN_NAME = "FlagAllModulesAsUsedPlugin";
 class FlagAllModulesAsUsedPlugin {
+	/**
+	 * @param {string} explanation explanation
+	 */
 	constructor(explanation) {
 		this.explanation = explanation;
 	}
@@ -26,7 +30,7 @@ class FlagAllModulesAsUsedPlugin {
 			const moduleGraph = compilation.moduleGraph;
 			compilation.hooks.optimizeDependencies.tap(PLUGIN_NAME, modules => {
 				/** @type {RuntimeSpec} */
-				let runtime = undefined;
+				let runtime;
 				for (const [name, { options }] of compilation.entries) {
 					runtime = mergeRuntimeOwned(
 						runtime,
@@ -40,7 +44,8 @@ class FlagAllModulesAsUsedPlugin {
 					if (module.factoryMeta === undefined) {
 						module.factoryMeta = {};
 					}
-					module.factoryMeta.sideEffectFree = false;
+					/** @type {FactoryMeta} */
+					(module.factoryMeta).sideEffectFree = false;
 				}
 			});
 		});

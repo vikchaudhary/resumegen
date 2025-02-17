@@ -16,7 +16,7 @@
 from flask import Flask, request, jsonify
 import sqlite3
 from flask_cors import CORS
-import openai
+from openai import OpenAI
 import re
 from pathlib import Path
 import os
@@ -32,7 +32,8 @@ logging.basicConfig(format=app.config['LOGGING_FORMAT'], level=app.config['LOGGI
 
 # Global variables
 # WARNING! Do not publish this code with your secret OpenAI key!
-openai.api_key = os.getenv("OPENAI_KEY")
+# openai.api_key = os.getenv("OPENAI_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_KEY"))
 
 
 # Configure SQLite database
@@ -275,14 +276,13 @@ def analyze_text():
     resume_fname = os.path.expanduser('~') + "/Downloads/" + data.get('resume_fname')
     print("resume_fname= ", resume_fname)
     
-    response = openai.Completion.create(
-        engine='text-davinci-003',
+    response = client.completions.create(
+        model='gpt-3.5-turbo-instruct',
         # prompt=f'Your task is to do keyword extraction from unstructured text. Generate a list of two-word keywords from the text. Remove all proper nouns from the list. Sort keywords alphabetically. \n\nText:\n{text}\n',
         prompt=f'List the important two-word keywords in the job description, below.  Remove all keywords that start or end with pronouns. Sort the list alphabetically. \n\nText:\n{text}\n',
         temperature=1,
         max_tokens=256,
         top_p=1,
-        best_of=3,
         frequency_penalty=0,
         presence_penalty=0
     )
@@ -323,12 +323,16 @@ def analyze_text():
     substring = "Answer:\n"
     str_list = keywords_str.split(substring)
     keywords_str = "".join(str_list)
+
     # remove all commas and newlines from the keywords
     keyword_arr=re.split(',|\n', keywords_str)
+
+    # Filter out one-word keywords
+    new_keyword_arr = [kw.strip() for kw in keyword_arr if len(kw.split()) > 1]
     print(keyword_arr) #debug
 
     # search resume for keywords
-    return_arr = search_keywords(resume_fname, keyword_arr)
+    return_arr = search_keywords(resume_fname, new_keyword_arr)
     
     return jsonify({ 'found_keywords_arr': return_arr[0], 
                      'missing_keywords_arr': return_arr[1]
@@ -355,13 +359,12 @@ def generate_resume():
         missing_keywords_str = ",".join(missing_keywords_arr)
         print("missing keywords: ", missing_keywords_str)
 
-        response = openai.Completion.create(
-            engine='text-davinci-003',
+        response = client.completions.create(
+            model='gpt-3.5-turbo-instruct',
             prompt=f'Your task is to rewrite the Resume by inserting each of the Keywords into the Resume. Return the edited Resume. \n\nKeywords:\n{missing_keywords_str} \n\nResume:\n{resume_contents_txt}\n',
             temperature=1,
             max_tokens=2100,
             top_p=1,
-            best_of=1,
             frequency_penalty=0,
             presence_penalty=0
         )

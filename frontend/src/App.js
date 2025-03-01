@@ -5,7 +5,7 @@ import './App.css'; // Import the CSS file
 /* Material UI controls */
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
-/* import { styled } from '@mui/material/styles'; */
+import { styled } from '@mui/material/styles';
 import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -29,8 +29,15 @@ import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import MenuIcon from '@mui/icons-material/Menu';
+import EditIcon from '@mui/icons-material/Edit';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
 
-/* Theme */
+
+/* Theme 
+
+   This is a TypeScript type annotation : ThemeOptions, which specifies that the themeOptions constant must conform to the structure defined by the ThemeOptions interface (which is imported from '@mui/material/styles').
+*/
 export const themeOptions: ThemeOptions = {
   palette: {
     mode: 'light',
@@ -49,6 +56,8 @@ const G_OPENRESUME_TXT = "Open Resume";
 const G_GENERATERESUME_TXT = "Generate Resume";
 const G_SAVEJOB_TXT = "Save this Job";
 const G_JOBSHEADER_TXT = "Jobs";
+const G_JOBNAME_TXT = "Job Name";
+const G_SELECT_COMPANY_TXT = "Select Company";
 
 function App() {
   /**
@@ -65,11 +74,17 @@ function App() {
   /* Database */
   const [jobName, setJobName] = useState('');
   const [jobList, setJobList] = useState([]);
+  /* Company name for Job */
+  const [companies, setCompanies] = useState([]); /* the list of companies */
+  const [selectedCompany, setSelectedCompany] = useState(''); /* the selected company */
 
+  /* When the component first mounts, useEffect() triggers */
   useEffect(() => {
     fetchJobs();
+    fetchCompanies();
   }, []);
 
+  /* Fetches the list of jobs from database */
   const fetchJobs = async () => {
     try {
       const response = await axios.get('http://localhost:5000/get-jobs');
@@ -81,6 +96,18 @@ function App() {
     }
   };
 
+  /* Fetches the list of companies from database */
+  const fetchCompanies = async () => {
+    try {
+      const response = await axios.get('http://localhost:5000/get-companies');
+
+      /* When the response returns, update the "companies" state with the data */
+      setCompanies(response.data);
+    } catch (error) {
+      console.log('Error in fetchCompanies():', error);
+    }
+  };
+
   const saveJob = async () => {
     const ownerID = 1; // Hardcode owner ID
     const orgID = 1000;
@@ -89,7 +116,8 @@ function App() {
       title: jobName,
       desc: job_desc,
       owner_id: ownerID,
-      org_id: orgID
+      org_id: orgID,
+      company: selectedCompany
     };
 
     try {
@@ -97,7 +125,19 @@ function App() {
       console.log(response.data.message);
       fetchJobs();
     } catch (error) {
-      console.log('Error:', error);
+      console.log('Error in saveJob():', error);
+    }
+  };
+
+  const editCompany = async () => {
+    try {
+      await axios.post('http://localhost:5000/update-job-company', {
+        job_name: jobName,
+        company: selectedCompany
+      });
+      fetchJobs();
+    } catch (error) {
+      console.log('Error updating company in editCompany():', error);
     }
   };
 
@@ -113,16 +153,32 @@ function App() {
       const response = await axios.get(`http://localhost:5000/get-job/${job.id}`);
       const data = response.data;
 
-      if (data.desc) {
-        // Set the job description in the state to update the "Job Description" TextField
-        setJobDesc(data.desc);
-      }
+      // Set the job description in the state to update the "Job Description" TextField
+      if (data.desc) setJobDesc(data.desc);
+      if (data.company) setSelectedCompany(data.company);
+      setJobName(data.title);
+
+      // Fetch the company name based on org_id
+      if(data.org_id) fetchCompanyName(data.org_id);
+
     } catch (error) {
       console.log('Error in handleJobClickinList():', error);
     }
   };
 
-  
+  /**
+   * Fetch company name from the backend
+   * @param {int} orgID 
+  */
+    const fetchCompanyName = async (orgID) => {
+      try {
+        const response = await axios.get(`http://localhost:5000/get-company-name/${orgID}`);
+        console.log("fetchCompanyName(): response.data:", response.data)
+        setSelectedCompany(response.data.short_name);
+      } catch (error) {
+          console.log('Error fetching company name:', error);
+      }
+    }
 
   /**
    * Handles the analyze button click event.
@@ -153,8 +209,10 @@ function App() {
         });
     };
 
-  // handleJobDescChange() 
-  // Clear the keyword list whenever the input text changes
+  /**
+   * handleJobDescChange() 
+   * Clear the keyword list whenever the input text changes
+  */
   const handleJobDescChange = (event) => {
     setJobDesc(event.target.value);
     setEditedText('');
@@ -175,7 +233,7 @@ function App() {
     document.getElementById('file-input').click();
   };
 
-  // This is the web application
+  // This is the web application, i.e. the output
   return (
     <div>
       <Box sx={{ flexGrow: 1 }}>
@@ -214,7 +272,7 @@ function App() {
               focused value={resume_fname} 
               InputProps={{ readOnly: true }} />
           
-            {/* job_desc–This is where you enter the job description */}
+            {/* Job Description */}
             <TextField label="Job Description" 
               className="input-pane" 
               variant="filled" 
@@ -223,14 +281,44 @@ function App() {
               defaultValue={job_desc} 
               onChange={handleJobDescChange} />
           
-            {/* Name the job */}
-            <TextField label="Job Name" 
+            {/* Name the job 
+            <TextField label={G_JOBNAME_TXT} 
               fullWidth 
               sx={{ mb: 2 }}
               size="small"
               value={jobName}
               onChange={(e) => setJobName(e.target.value)} />
+              */}
 
+            {/* Job Name and Company Selection */}
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
+              <TextField
+                label={G_JOBNAME_TXT}
+                fullWidth
+                size="small"
+                value={jobName}
+                onChange={(e) => setJobName(e.target.value)}
+              />
+              <Select
+                value={selectedCompany}
+                onChange={(e) => setSelectedCompany(e.target.value)}
+                displayEmpty
+                size="small"
+                sx={{ minWidth: 200 }}
+              >
+                <MenuItem value="" disabled>{G_SELECT_COMPANY_TXT}</MenuItem>
+                {companies.map((company) => (
+                  <MenuItem key={company.id} value={company.name}>
+                    {company.name}
+                  </MenuItem>
+                ))}
+              </Select>
+              <Button variant="contained" startIcon={<EditIcon />} onClick={editCompany}>
+                Edit Company
+              </Button>
+            </Box>
+
+            {/* Save Job button */}
             <Button 
               variant="contained" 
               endIcon={<SaveAsIcon />}

@@ -28,7 +28,10 @@ app.debug = True
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config['LOGGING_FORMAT'] = '%(asctime)s %(levelname)s: %(message)s'
 app.config['LOGGING_LEVEL'] = logging.INFO
-logging.basicConfig(format=app.config['LOGGING_FORMAT'], level=app.config['LOGGING_LEVEL'])
+logging.basicConfig(format=app.config['LOGGING_FORMAT'], level=app.config['LOGGING_LEVEL'], filename='backend.log')
+
+# Create a logger
+logger = logging.getLogger(__name__)
 
 # Global variables
 # WARNING! Do not publish this code with your secret OpenAI key!
@@ -76,6 +79,7 @@ def initialize_db():
 
     conn.commit()
     conn.close()
+    logger.info("initialize_db: done.")
 
 @app.route('/')
 def home():
@@ -135,16 +139,17 @@ def get_jobs():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 # Get Job endpoint -- Gets the job object from it's 'id'
 @app.route('/get-job/<int:job_id>', methods=['GET'])
 def get_job(job_id):
     try:
         # Connect to the SQLite database
-        conn = sqlite3.connect('keyguru.db')
+        conn = sqlite3.connect(db_file)
         cursor = conn.cursor()
 
         # Execute the query to retrieve the job with the given job_id
-        cursor.execute('SELECT * FROM job WHERE id=?', (job_id,))
+        cursor.execute('SELECT id, title, desc, owner_id, org_id FROM job WHERE id=?', (job_id,))
         job = cursor.fetchone()
 
         if job:
@@ -164,6 +169,87 @@ def get_job(job_id):
         print("get_job: error: ", str(e))
         return jsonify({'error': str(e)}), 500
 
+# Get Companies endpoint
+@app.route('/get-companies', methods=['GET'])
+def get_companies():
+    try:
+        conn = sqlite3.connect(db_file)
+        cursor = conn.cursor()
+
+        # Fetch all companies from the company table
+        cursor.execute('SELECT id, short_name FROM org ORDER BY short_name ASC')
+        companies = cursor.fetchall()
+
+        conn.close()
+
+        # Convert to list of dictionaries
+        company_list = [{'id': company[0], 'name': company[1]} for company in companies]
+        logger.info("company_list:", company_list)
+
+        return jsonify(company_list)
+
+    except Exception as e:
+        print("get_companies: error:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+
+# Get Company Name endpoint
+# Retrieves the short_name (company name) based on the org_id
+@app.route('/get-company-name/<int:org_id>', methods=['GET'])
+def get_company_name(org_id):
+    try:
+        conn = sqlite3.connect(db_file)
+        cursor = conn.cursor()
+
+        # Fetch the company name based on the org_id
+        cursor.execute('SELECT short_name FROM org WHERE id = ?', (org_id,))
+        company = cursor.fetchone()
+
+        conn.close()
+
+        if company:
+            return jsonify({'short_name': company[0]})
+        else:
+            return jsonify({'error': 'Company not found'}), 404
+
+    except Exception as e:
+        print("get_company_name: error:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+# Update Job's Company endpoint
+@app.route('/update-job-company', methods=['POST'])
+def update_job_company():
+    try:
+        data = request.get_json()
+        job_name = data.get('job_name')
+        company_name = data.get('company')
+
+        if not job_name or not company_name:
+            return jsonify({'error': 'Job name and company name are required'}), 400
+
+        conn = sqlite3.connect(db_file)
+        cursor = conn.cursor()
+
+        # Fetch the company ID based on the company name
+        cursor.execute('SELECT id FROM org WHERE short_name = ?', (company_name,))
+        company = cursor.fetchone()
+
+        if company is None:
+            conn.close()
+            return jsonify({'error': 'Company not found'}), 404
+
+        company_id = company[0]
+
+        # Update the job's org_id based on the job title
+        cursor.execute('UPDATE job SET org_id = ? WHERE title = ?', (company_id, job_name))
+        conn.commit()
+        conn.close()
+
+        return jsonify({'message': 'Job company updated successfully'})
+
+    except Exception as e:
+        print("update_job_company: error:", str(e))
+        return jsonify({'error': str(e)}), 500
 
 
 def get_user(user_id):
@@ -184,13 +270,39 @@ def get_org(org_id):
     return org
 
 
-def insert_job(title, desc, owner_id, org_id):
-    conn = sqlite3.connect(db_file)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO job (title, desc, owner_id, org_id) VALUES (?, ?, ?, ?)",
-                   (title, desc, owner_id, org_id))
-    conn.commit()
-    conn.close()
+# def insert_job(title, desc, owner_id, org_id):
+#     conn = sqlite3.connect(db_file)
+#     cursor = conn.cursor()
+#     cursor.execute("INSERT INTO job (title, desc, owner_id, org_id) VALUES (?, ?, ?, ?)",
+#                    (title, desc, owner_id, org_id))
+#     conn.commit()
+#     conn.close()
+
+def insert_job(title, desc, owner_id, company_name):
+    try:
+        conn = sqlite3.connect(db_file)
+        cursor = conn.cursor()
+
+        # Fetch the company ID based on the company name
+        cursor.execute('SELECT id FROM org WHERE short_name = ?', (company_name,))
+        company = cursor.fetchone()
+
+        if company is None:
+            conn.close()
+            raise ValueError("Company not found")
+
+        org_id = company[0]  # Extract the organization ID
+
+        # Insert the job into the job table
+        cursor.execute("INSERT INTO job (title, desc, owner_id, org_id) VALUES (?, ?, ?, ?)",
+                       (title, desc, owner_id, org_id))
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        print("insert_job: error:", str(e))
+        return {'error': str(e)}
 
 
 def get_job_by_id(job_id):

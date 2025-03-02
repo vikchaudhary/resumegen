@@ -40,12 +40,12 @@ client = OpenAI(api_key=os.getenv("OPENAI_KEY"))
 
 
 # Configure SQLite database
-db_file = 'keyguru.db'
+DATABASE_NAME = 'keyguru.db'
 
 def initialize_db():
     # This function connects to the SQLite database and creates the required tables 
     # It ensures that the database is set up before the application runs.
-    conn = sqlite3.connect(db_file)
+    conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     
     # Create the "user" table
@@ -79,7 +79,9 @@ def initialize_db():
 
     conn.commit()
     conn.close()
-    logger.info("initialize_db: done.")
+    logger.info("--------------------------------------")
+    logger.info("initialize_db(): done.")
+    logger.info("--------------------------------------")
 
 @app.route('/')
 def home():
@@ -118,20 +120,18 @@ def save_job():
 def get_jobs():
     try:
         # Establish a connection to the SQLite database
-        conn = sqlite3.connect('keyguru.db')
+        conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
 
         # Execute the SQL query to fetch the jobs from the 'job' table
-        cursor.execute('SELECT id, title FROM job')
+        cursor.execute('SELECT job.id, job.title, org.short_name FROM job INNER JOIN org ON job.org_id=org.id')
         jobs = cursor.fetchall()
 
         # Convert the fetched jobs to a list of dictionaries
-        jobs_list = [{'id': job[0], 'title': job[1]} for job in jobs]
+        jobs_list = [{'id': job[0], 'title': job[1], 'org': job[2]} for job in jobs]
 
         # Close the database connection
         conn.close()
-
-        print("jobs_list: ", jobs_list)  #debug
         
         # Return the list of jobs as a JSON response
         return jsonify(jobs_list)
@@ -145,11 +145,11 @@ def get_jobs():
 def get_job(job_id):
     try:
         # Connect to the SQLite database
-        conn = sqlite3.connect(db_file)
+        conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
 
         # Execute the query to retrieve the job with the given job_id
-        cursor.execute('SELECT id, title, desc, owner_id, org_id FROM job WHERE id=?', (job_id,))
+        cursor.execute('SELECT job.id, job.title, job.desc, job.owner_id, job.org_id, org.short_name FROM job INNER JOIN org ON job.org_id=org.id WHERE job.id=?', (job_id,))
         job = cursor.fetchone()
 
         if job:
@@ -159,7 +159,8 @@ def get_job(job_id):
                 'title': job[1],
                 'desc': job[2],
                 'owner_id': job[3],
-                'org_id': job[4]
+                'org_id': job[4],
+                'org_name': job[5]
             }
             return jsonify(job_data)
         else:
@@ -173,7 +174,7 @@ def get_job(job_id):
 @app.route('/get-companies', methods=['GET'])
 def get_companies():
     try:
-        conn = sqlite3.connect(db_file)
+        conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
 
         # Fetch all companies from the company table
@@ -184,7 +185,7 @@ def get_companies():
 
         # Convert to list of dictionaries
         company_list = [{'id': company[0], 'name': company[1]} for company in companies]
-        logger.info("company_list:", company_list)
+        # logger.info("company_list:", company_list)
 
         return jsonify(company_list)
 
@@ -198,7 +199,7 @@ def get_companies():
 @app.route('/get-company-name/<int:org_id>', methods=['GET'])
 def get_company_name(org_id):
     try:
-        conn = sqlite3.connect(db_file)
+        conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
 
         # Fetch the company name based on the org_id
@@ -227,7 +228,7 @@ def update_job_company():
         if not job_name or not company_name:
             return jsonify({'error': 'Job name and company name are required'}), 400
 
-        conn = sqlite3.connect(db_file)
+        conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
 
         # Fetch the company ID based on the company name
@@ -253,7 +254,7 @@ def update_job_company():
 
 
 def get_user(user_id):
-    conn = sqlite3.connect(db_file)
+    conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM user WHERE id = ?", (user_id,))
     user = cursor.fetchone()
@@ -262,7 +263,7 @@ def get_user(user_id):
 
 
 def get_org(org_id):
-    conn = sqlite3.connect(db_file)
+    conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM org WHERE id = ?", (org_id,))
     org = cursor.fetchone()
@@ -271,7 +272,7 @@ def get_org(org_id):
 
 
 # def insert_job(title, desc, owner_id, org_id):
-#     conn = sqlite3.connect(db_file)
+#     conn = sqlite3.connect(DATABASE_NAME)
 #     cursor = conn.cursor()
 #     cursor.execute("INSERT INTO job (title, desc, owner_id, org_id) VALUES (?, ?, ?, ?)",
 #                    (title, desc, owner_id, org_id))
@@ -280,7 +281,7 @@ def get_org(org_id):
 
 def insert_job(title, desc, owner_id, company_name):
     try:
-        conn = sqlite3.connect(db_file)
+        conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
 
         # Fetch the company ID based on the company name
@@ -306,7 +307,7 @@ def insert_job(title, desc, owner_id, company_name):
 
 
 def get_job_by_id(job_id):
-    conn = sqlite3.connect(db_file)
+    conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM job WHERE id = ?", (job_id,))
     job = cursor.fetchone()

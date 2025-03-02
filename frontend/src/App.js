@@ -32,6 +32,13 @@ import MenuIcon from '@mui/icons-material/Menu';
 import EditIcon from '@mui/icons-material/Edit';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
+/* Table */
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
 
 
 /* Theme 
@@ -55,9 +62,10 @@ const G_KEYBUTTON_TXT = "Extract Keywords";
 const G_OPENRESUME_TXT = "Open Resume";
 const G_GENERATERESUME_TXT = "Generate Resume";
 const G_SAVEJOB_TXT = "Save this Job";
-const G_JOBSHEADER_TXT = "Jobs";
+const G_JOBSHEADER_TXT = "Select a job:";
 const G_JOBNAME_TXT = "Job Name";
 const G_SELECT_COMPANY_TXT = "Select Company";
+const G_EDIT_TXT = "Edit";
 
 function App() {
   /**
@@ -212,7 +220,7 @@ function App() {
   /**
    * handleJobDescChange() 
    * Clear the keyword list whenever the input text changes
-  */
+   **/
   const handleJobDescChange = (event) => {
     setJobDesc(event.target.value);
     setEditedText('');
@@ -233,6 +241,42 @@ function App() {
     document.getElementById('file-input').click();
   };
 
+  /**
+   * ListJobsTable
+   * Create a HTML table structure. The outer <TableContainer component={Paper}> 
+   * is from materialUI and provides styling like shadow, rounded corners, and scrolling.
+   * The <Chip> and <ListItemText> are now placed inside <td> cells, creating the two-column layout
+   * Clickable Row: ee add an onClick handler to the <ListItemButton> to handle the click event 
+   * for the entire row. It’s inside the table cell for styling reasons.
+   **/
+  function ListJobsTable({ job, handleJobClickinList }) {
+    const chipColumnWidth = '60px'; 
+    const titleColumnWidth = '200px'; 
+    const rowHeight = '35px';
+
+    return (
+      <TableContainer component={Paper} elevation={0} sx={{ width: '100%' }}>
+        <Table sx={{ tableLayout: 'fixed', width: '100%' }} aria-label="Jobs table">
+          <TableBody>
+            <TableRow
+              key={job.id}
+              sx={{ '&:last-child td, &:last-child th': { border: 0 }, height: rowHeight, padding: "0px" }}
+            >
+              <TableCell component="th" scope="row" sx={{ width: chipColumnWidth, maxWidth: chipColumnWidth, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: "0px" }}>
+                <Chip label={job.org} color="primary" size="small" sx={{ mb: 1, mr: 1, ml: 1 }} />
+              </TableCell>
+              <TableCell align="left" sx={{ width: titleColumnWidth, padding: "0px"}}>
+                <ListItemButton onClick={() => handleJobClickinList(job)}>
+                  {job.title}
+                </ListItemButton>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </TableContainer>
+    );
+  }
+
   // This is the web application, i.e. the output
   return (
     <div>
@@ -251,7 +295,7 @@ function App() {
       <br></br>
       <Box sx={{ flexGrow: 1 }}>
         <Grid container spacing={2}>
-          <Grid item xs={8}>
+          <Grid item xs={7}>
           
             {/* Open file input */}
             <input type="file" id="file-input" onChange={handleFileSelect} style={{ display: 'none' }} />
@@ -313,8 +357,8 @@ function App() {
                   </MenuItem>
                 ))}
               </Select>
-              <Button variant="contained" startIcon={<EditIcon />} onClick={editCompany}>
-                Edit Company
+              <Button variant="contained" startIcon={<EditIcon />} onClick={editCompany} sx={{ pl: 2, pr: 2 }}>
+                {G_EDIT_TXT}
               </Button>
             </Box>
 
@@ -328,19 +372,17 @@ function App() {
           
           </Grid>
 
-          {/* List of jobs from the database */}
-          <Grid item xs={4}>
+          {/* Show a list of jobs */}
+          <Grid item xs={5}>
             <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
               <Paper sx={{ p: 2, width: 600 }}>
                 <Typography variant="h8" component="h4">{G_JOBSHEADER_TXT}</Typography>
                 <List sx={{ maxHeight: 800, overflow: 'auto' }}>
+
                   {jobList.map((job) => (
-                    <ListItem key={job.id} disablePadding>
-                      <ListItemButton onClick={() => handleJobClickinList(job)}>
-                        <ListItemText primary={job.title} />
-                      </ListItemButton>
-                    </ListItem>
+                    <ListJobsTable key={job.id} job={job} handleJobClickinList={handleJobClickinList}/>
                   ))}
+
                 </List>
               </Paper>
             </Box>
@@ -361,8 +403,8 @@ function App() {
                 sx={{
                   display: 'flex',
                   flexWrap: 'wrap',
-                  width: 500,
-                  height: 150
+                  height: 150,
+                  width: '95%'
                 }}>
                 <Stack direction="row"  flexWrap="wrap" spacing={1}>
                 {found_keywords.map((keyword, index) => (

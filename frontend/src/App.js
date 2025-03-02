@@ -39,7 +39,8 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
-
+/* Word Cloud */
+import CardMedia from '@mui/material/CardMedia';
 
 /* Theme 
 
@@ -85,6 +86,8 @@ function App() {
   /* Company name for Job */
   const [companies, setCompanies] = useState([]); /* the list of companies */
   const [selectedCompany, setSelectedCompany] = useState(''); /* the selected company */
+  /* Word cloud */
+  const [wordCloudImage, setWordCloudImage] = useState('');
 
   /* When the component first mounts, useEffect() triggers */
   useEffect(() => {
@@ -162,7 +165,10 @@ function App() {
       const data = response.data;
 
       // Set the job description in the state to update the "Job Description" TextField
-      if (data.desc) setJobDesc(data.desc);
+      if (data.desc) {
+        // Set the value of the Job description, and do other things like word cloud generatopm
+        handleJobDescChange({ target: { value: data.desc } });
+      }
       if (data.company) setSelectedCompany(data.company);
       setJobName(data.title);
 
@@ -219,13 +225,22 @@ function App() {
 
   /**
    * handleJobDescChange() 
-   * Clear the keyword list whenever the input text changes
+   * Clear the keyword list whenever the input text changes, and generate a new word cloud
    **/
-  const handleJobDescChange = (event) => {
-    setJobDesc(event.target.value);
+  const handleJobDescChange = async (event) => {
+    const newJobDesc = event.target.value;
+    setJobDesc(newJobDesc);
     setEditedText('');
     setFoundKeywords([]);
     setMissingKeywords([]);
+
+    try {
+      const response = await axios.post('http://localhost:5000/generate-wordcloud', { job_desc: newJobDesc });
+      setWordCloudImage(response.data.image);
+    } catch (error) {
+      console.error('Error generating word cloud:', error);
+      setWordCloudImage(''); // Clear the image on error
+    }
   };
 
   // handleFileSelect
@@ -324,15 +339,6 @@ function App() {
               sx={{ mb: 1 }} 
               defaultValue={job_desc} 
               onChange={handleJobDescChange} />
-          
-            {/* Name the job 
-            <TextField label={G_JOBNAME_TXT} 
-              fullWidth 
-              sx={{ mb: 2 }}
-              size="small"
-              value={jobName}
-              onChange={(e) => setJobName(e.target.value)} />
-              */}
 
             {/* Job Name and Company Selection */}
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
@@ -374,6 +380,7 @@ function App() {
 
           {/* Show a list of jobs */}
           <Grid item xs={5}>
+
             <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
               <Paper sx={{ p: 2, width: 600 }}>
                 <Typography variant="h8" component="h4">{G_JOBSHEADER_TXT}</Typography>
@@ -386,9 +393,20 @@ function App() {
                 </List>
               </Paper>
             </Box>
+
+            {/* Display Word Cloud */}
+            {wordCloudImage && (
+              <CardMedia
+                component="img"
+                height="300"
+                image={`data:image/png;base64,${wordCloudImage}`}
+                alt="Word Cloud"
+              />
+            )}
           </Grid>
 
           <Grid item xs={8}>
+
             {/* The output pane is where we display all the keywords */}
             <Button 
               variant="contained" 

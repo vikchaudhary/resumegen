@@ -21,6 +21,13 @@ import re
 from pathlib import Path
 import os
 import logging
+# for word cloud
+from wordcloud import WordCloud
+import base64
+from io import BytesIO
+import matplotlib
+matplotlib.use('Agg')  # Use the Agg backend (no GUI)
+import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 CORS(app)
@@ -87,7 +94,9 @@ def initialize_db():
 def home():
     return jsonify({"message": "Welcome to the Resumegen API! Available endpoints: /save-job, /get-jobs, /get-job/<job_id>, /analyze, /generate"})
 
+# ---------------------------------------------------------
 # Save Job endpoint
+# ---------------------------------------------------------
 @app.route('/save-job', methods=['POST'])
 def save_job():
     try:
@@ -115,7 +124,9 @@ def save_job():
         print("save_job: error: ", str(e))
         return jsonify({'error': str(e)}), 500
 
+# ---------------------------------------------------------
 # Get Jobs endpoint -- Gets a list of all the jobs
+# ---------------------------------------------------------
 @app.route('/get-jobs/', methods=['GET'])
 def get_jobs():
     try:
@@ -139,8 +150,9 @@ def get_jobs():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
+# ---------------------------------------------------------
 # Get Job endpoint -- Gets the job object from it's 'id'
+# ---------------------------------------------------------
 @app.route('/get-job/<int:job_id>', methods=['GET'])
 def get_job(job_id):
     try:
@@ -170,7 +182,9 @@ def get_job(job_id):
         print("get_job: error: ", str(e))
         return jsonify({'error': str(e)}), 500
 
+# ---------------------------------------------------------
 # Get Companies endpoint
+# ---------------------------------------------------------
 @app.route('/get-companies', methods=['GET'])
 def get_companies():
     try:
@@ -193,9 +207,10 @@ def get_companies():
         print("get_companies: error:", str(e))
         return jsonify({'error': str(e)}), 500
 
-
+# ---------------------------------------------------------
 # Get Company Name endpoint
 # Retrieves the short_name (company name) based on the org_id
+# ---------------------------------------------------------
 @app.route('/get-company-name/<int:org_id>', methods=['GET'])
 def get_company_name(org_id):
     try:
@@ -217,7 +232,9 @@ def get_company_name(org_id):
         print("get_company_name: error:", str(e))
         return jsonify({'error': str(e)}), 500
 
+# ---------------------------------------------------------
 # Update Job's Company endpoint
+# ---------------------------------------------------------
 @app.route('/update-job-company', methods=['POST'])
 def update_job_company():
     try:
@@ -252,7 +269,38 @@ def update_job_company():
         print("update_job_company: error:", str(e))
         return jsonify({'error': str(e)}), 500
 
+# ---------------------------------------------------------
+# /generate-wordcloud endpoint
+# ---------------------------------------------------------
+@app.route('/generate-wordcloud', methods=['POST'])
+def generate_wordcloud():
+    """Generates a word cloud image from job description and returns it as a Base64 encoded string."""
+    try:
+        data = request.get_json()
+        job_desc = data.get('job_desc')
 
+        if not job_desc:
+            return jsonify({'error': 'Job description is required'}), 400
+
+        img_base64 = generate_wordcloud_base64(job_desc)
+
+        if img_base64:
+            return jsonify({'image': img_base64})
+        else:
+            return jsonify({'error': 'Failed to generate word cloud'}), 500
+
+    except Exception as e:
+        print("generate_wordcloud: error:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+
+
+
+
+
+# ---------------------------------------------------------
+# get_user
+# ---------------------------------------------------------
 def get_user(user_id):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
@@ -261,7 +309,9 @@ def get_user(user_id):
     conn.close()
     return user
 
-
+# ---------------------------------------------------------
+# get_org
+# ---------------------------------------------------------
 def get_org(org_id):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
@@ -270,15 +320,9 @@ def get_org(org_id):
     conn.close()
     return org
 
-
-# def insert_job(title, desc, owner_id, org_id):
-#     conn = sqlite3.connect(DATABASE_NAME)
-#     cursor = conn.cursor()
-#     cursor.execute("INSERT INTO job (title, desc, owner_id, org_id) VALUES (?, ?, ?, ?)",
-#                    (title, desc, owner_id, org_id))
-#     conn.commit()
-#     conn.close()
-
+# ---------------------------------------------------------
+# insert_job
+# ---------------------------------------------------------
 def insert_job(title, desc, owner_id, company_name):
     try:
         conn = sqlite3.connect(DATABASE_NAME)
@@ -305,7 +349,9 @@ def insert_job(title, desc, owner_id, company_name):
         print("insert_job: error:", str(e))
         return {'error': str(e)}
 
-
+# ---------------------------------------------------------
+# get_job_by_id
+# ---------------------------------------------------------
 def get_job_by_id(job_id):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
@@ -314,6 +360,39 @@ def get_job_by_id(job_id):
     conn.close()
     return job
 
+# ---------------------------------------------------------
+# generate_wordcloud_base64
+# Generates a word cloud from the given text and returns it as a base64 encoded string.
+# ---------------------------------------------------------
+def generate_wordcloud_base64(text):
+  try:
+    # generate the wordcloud
+    wordcloud = WordCloud(width=800, height=400, background_color='white', max_words=100).generate(text)
+
+    # Create a BytesIO object to hold the image data. This is an in-memory file-like object 
+    # from the io module. We use it to store the image data without writing it to a file on disk.
+    img_buffer = BytesIO()
+
+    # Save the wordcloud to the BytesIO object as a PNG. Use plt.savefig() to save the Matplotlib 
+    # figure to the BytesIO buffer in PNG format. Crucially, we're saving the figure to the buffer. 
+    plt.figure(figsize=(12, 6))  # Create a figure so that we can save it to the buffer
+    plt.imshow(wordcloud, interpolation='bilinear')
+    plt.axis("off")  # Hide axes
+    plt.savefig(img_buffer, format="png")  # Save the figure to the buffer
+    plt.close()  # Close the figure to free memory.
+
+    # Encode the image data to base64. Encodes the raw image bytes into a Base64 string, which 
+    # is a text-based representation of the image. The .decode('utf-8') converts the resulting 
+    # bytes object to a regular string.
+    img_str = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+
+    return img_str
+
+  except Exception as e:
+        print(f"Error generating word cloud: {e}")
+        return None
+
+# ---------------------------------------------------------
 # search_keywords() –– internal function
 #   fname: search file with this fully-qualified name...
 #   keyword_arr: ...for the list of keywords in this string array
@@ -321,7 +400,7 @@ def get_job_by_id(job_id):
 #   arr: found keyword array
 #   arr: the missing keyword array
 #   text: the file contents
-#
+# ---------------------------------------------------------
 def search_keywords(fname, keyword_arr):
     file = open(fname, "r")
     if file is not None:

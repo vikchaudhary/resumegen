@@ -5,3 +5,4 @@ reactpy
 fastapi
 uvicorn
 gunicorn
+wordcloud

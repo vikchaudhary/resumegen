@@ -45,7 +45,6 @@ logger = logging.getLogger(__name__)
 # openai.api_key = os.getenv("OPENAI_KEY")
 client = OpenAI(api_key=os.getenv("OPENAI_KEY"))
 
-
 # Configure SQLite database
 DATABASE_NAME = 'keyguru.db'
 
@@ -101,28 +100,28 @@ def home():
 def save_job():
     try:
         data = request.get_json()
-        title = data.get('title')
-        desc = data.get('desc')
+        job_title = data.get('job_title')
+        job_desc = data.get('job_desc')
         owner_id = data.get('owner_id')
         org_id = data.get('org_id')
 
-        print("save-job: ", title, " | ", desc[0:360], " | ", owner_id, " | ", org_id)  # debug
+        print("save-job() Saved: ", job_title, " | ", owner_id, " | ", org_id)  # debug
 
         # Find the owner and org objects based on their IDs
         owner = get_user(owner_id)
         org = get_org(org_id)
 
         if owner is None or org is None:
-            return jsonify({'error': 'Invalid owner or org ID'})
+            return jsonify({'save_job() error': 'Invalid owner or org ID'})
 
         # Insert the job into the database
-        insert_job(title, desc, owner_id, org_id)
+        insert_job(job_title, job_desc, owner_id, org_id)
 
-        return jsonify({'message': 'Job saved successfully'})
+        return jsonify({'save_job() message': 'Job saved successfully'})
 
     except Exception as e:
         print("save_job: error: ", str(e))
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'save_job() error': str(e)}), 500
 
 # ---------------------------------------------------------
 # Get Jobs endpoint -- Gets a list of all the jobs
@@ -135,11 +134,11 @@ def get_jobs():
         cursor = conn.cursor()
 
         # Execute the SQL query to fetch the jobs from the 'job' table
-        cursor.execute('SELECT job.id, job.title, org.short_name FROM job INNER JOIN org ON job.org_id=org.id')
+        cursor.execute('SELECT job.id, job.title, org.id, org.short_name FROM job INNER JOIN org ON job.org_id=org.id')
         jobs = cursor.fetchall()
 
         # Convert the fetched jobs to a list of dictionaries
-        jobs_list = [{'id': job[0], 'title': job[1], 'org': job[2]} for job in jobs]
+        jobs_list = [{'job_id': job[0], 'job_title': job[1], 'org_id': job[2], 'org_name': job[3]} for job in jobs]
 
         # Close the database connection
         conn.close()
@@ -167,10 +166,10 @@ def get_job(job_id):
         if job:
             # Create a dictionary with job data
             job_data = {
-                'id': job[0],
-                'title': job[1],
-                'desc': job[2],
-                'owner_id': job[3],
+                'job_id': job[0],
+                'job_title': job[1],
+                'job_desc': job[2],
+                'job_owner_id': job[3],
                 'org_id': job[4],
                 'org_name': job[5]
             }
@@ -233,7 +232,7 @@ def get_company_name(org_id):
         return jsonify({'error': str(e)}), 500
 
 # ---------------------------------------------------------
-# Update Job's Company endpoint
+# Update Job's Org endpoint
 # ---------------------------------------------------------
 @app.route('/update-job-company', methods=['POST'])
 def update_job_company():
@@ -268,6 +267,44 @@ def update_job_company():
     except Exception as e:
         print("update_job_company: error:", str(e))
         return jsonify({'error': str(e)}), 500
+
+# ---------------------------------------------------------
+# /add-org endpoint
+# ---------------------------------------------------------
+@app.route('/add-org', methods=['POST'])
+def add_org():
+    try:
+        data = request.json
+        short_name = data.get('short_name')
+        long_name = data.get('long_name')
+        
+        if not short_name:
+            return jsonify({'add-org() error': 'Organization short name is required'}), 400
+
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+        
+        # Insert new organization
+        cursor.execute('INSERT INTO org (short_name, long_name) VALUES (?, ?)', 
+                      (short_name, long_name))
+        conn.commit()
+        
+        # Get the id of the newly inserted org
+        new_org_id = cursor.lastrowid
+        
+        conn.close()
+        
+        return jsonify({
+            'message': 'Organization added successfully',
+            'org': {
+                'org_id': new_org_id,
+                'short_name': short_name,
+                'long_name': long_name
+            }
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 # ---------------------------------------------------------
 # /generate-wordcloud endpoint
@@ -323,20 +360,17 @@ def get_org(org_id):
 # ---------------------------------------------------------
 # insert_job
 # ---------------------------------------------------------
-def insert_job(title, desc, owner_id, company_name):
+def insert_job(title, desc, owner_id, org_id):
     try:
         conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
 
-        # Fetch the company ID based on the company name
-        cursor.execute('SELECT id FROM org WHERE short_name = ?', (company_name,))
-        company = cursor.fetchone()
-
-        if company is None:
+        # Check that the org exists
+        cursor.execute('SELECT short_name FROM org WHERE id = ?', (org_id,))
+        org = cursor.fetchone()
+        if org is None:
             conn.close()
-            raise ValueError("Company not found")
-
-        org_id = company[0]  # Extract the organization ID
+            raise ValueError("insert_job(): Company not found")
 
         # Insert the job into the job table
         cursor.execute("INSERT INTO job (title, desc, owner_id, org_id) VALUES (?, ?, ?, ?)",
@@ -346,7 +380,7 @@ def insert_job(title, desc, owner_id, company_name):
         conn.close()
 
     except Exception as e:
-        print("insert_job: error:", str(e))
+        print("insert_job() error:", str(e))
         return {'error': str(e)}
 
 # ---------------------------------------------------------
@@ -399,7 +433,8 @@ def generate_wordcloud_base64(text):
 # return an array with these contents:
 #   arr: found keyword array
 #   arr: the missing keyword array
-#   text: the file contents
+# identifies which job-related keywords are present in the user's resume and which ones are missing, helping 
+# understand how well a resume matches the job requirements.
 # ---------------------------------------------------------
 def search_keywords(fname, keyword_arr):
     file = open(fname, "r")
@@ -437,7 +472,7 @@ def search_keywords(fname, keyword_arr):
         combined_arr = keyword_arr + list(set(chatgpt_keyword_arr) - set(keyword_arr))
 
         count=0
-        for index, keyword in enumerate(combined_arr, start=1):
+        for index, keyword in enumerate(keyword_arr, start=1):
             if keyword:
                 if keyword.lower() in the_file:
                     # keyword found
@@ -451,7 +486,7 @@ def search_keywords(fname, keyword_arr):
                     count=count+1
     
     # return an array containing the found keyword array, the missing keyword array, and the file contents
-    return (found_keywords_arr, missing_keywords_arr, the_file_txt)
+    return (found_keywords_arr, missing_keywords_arr)
 
 
 # Analyze end-point
@@ -459,7 +494,6 @@ def search_keywords(fname, keyword_arr):
 # Returns a JSON object with these keys
 #   found_keywords_arr: array of all keywords that were found
 #   missing_keywords_arr: array of keywords that were not found
-
 @app.route('/analyze', methods=['POST'])
 def analyze_text():
     print("Analyzing job listing...")
@@ -483,6 +517,8 @@ def analyze_text():
     keywords_str = response.choices[0].text.strip()
     # replace "/" separator with space
     keywords_str = keywords_str.replace("/", " ")
+    # replace "- " separator with space
+    keywords_str = keywords_str.replace("- ", "")
     # strip out the phrase at the beginning of the output
     substring = "Two-Word Keywords:\n"
     str_list = keywords_str.split(substring)

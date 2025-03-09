@@ -17,6 +17,7 @@ import ErrorIcon from '@mui/icons-material/Error';
 import FileOpenIcon from '@mui/icons-material/FileOpen';
 import SaveAsIcon from '@mui/icons-material/SaveAs';
 import EditNoteIcon from '@mui/icons-material/EditNote';
+import FindInPageIcon from '@mui/icons-material/FindInPage';
 import { ThemeOptions } from '@mui/material/styles';
 /* List */
 import List from '@mui/material/List';
@@ -41,6 +42,12 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 /* Word Cloud */
 import CardMedia from '@mui/material/CardMedia';
+/* Dialog for adding a new org/compamy */
+import AddCircleIcon from '@mui/icons-material/AddCircle';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
 
 /* Theme 
 
@@ -59,14 +66,19 @@ export const themeOptions: ThemeOptions = {
 };
 
 /* Constants */
-const G_KEYBUTTON_TXT = "Extract Keywords";
+const G_ANALYZE_TXT = "Analyze Resume";
 const G_OPENRESUME_TXT = "Open Resume";
+const G_RESUME_TXT = "Resume";
 const G_GENERATERESUME_TXT = "Generate Resume";
 const G_SAVEJOB_TXT = "Save this Job";
 const G_JOBSHEADER_TXT = "Select a job:";
 const G_JOBNAME_TXT = "Job Name";
 const G_SELECT_COMPANY_TXT = "Select Company";
 const G_EDIT_TXT = "Edit";
+const G_ALERT_RESUMEFILENOTSET = 'Please select a resume file first';
+const G_NAME_OF_ORGANIZATION_TXT = 'Name of organization';
+const G_SHORT_NAME_TXT = "Short name";
+const G_FULL_ORG_NAME_TXT = "Full org name";
 
 function App() {
   /**
@@ -85,9 +97,15 @@ function App() {
   const [jobList, setJobList] = useState([]);
   /* Company name for Job */
   const [companies, setCompanies] = useState([]); /* the list of companies */
-  const [selectedCompany, setSelectedCompany] = useState(''); /* the selected company */
+  // Update the state to store both id and name
+  const [selectedCompany, setSelectedCompany] = useState({ id: '', name: '' });
   /* Word cloud */
   const [wordCloudImage, setWordCloudImage] = useState('');
+  /* Dialog to add a new company */
+  const [openNewOrgDialog, setOpenNewOrgDialog] = useState(false);
+  const [newOrgShortName, setNewOrgShortName] = useState('');
+  const [newOrgLongName, setNewOrgLongName] = useState('');
+  
 
   /* When the component first mounts, useEffect() triggers */
   useEffect(() => {
@@ -121,14 +139,12 @@ function App() {
 
   const saveJob = async () => {
     const ownerID = 1; // Hardcode owner ID
-    const orgID = 1000;
 
     const jobData = {
-      title: jobName,
-      desc: job_desc,
+      job_title: jobName,
+      job_desc: job_desc,
       owner_id: ownerID,
-      org_id: orgID,
-      company: selectedCompany
+      org_id: selectedCompany.id
     };
 
     try {
@@ -153,6 +169,24 @@ function App() {
   };
 
   /**
+   * handleAddOrg–adds a new org to the org table
+   */
+  const handleAddOrg = async () => {
+    try {
+      const response = await axios.post('http://localhost:5000/add-org', {
+        short_name: newOrgShortName,
+        long_name: newOrgLongName
+      });
+      setNewOrgShortName('');
+      setNewOrgLongName('');
+      setOpenNewOrgDialog(false);
+      fetchCompanies(); // Refresh the list
+    } catch (error) {
+      console.error('add-org() - Error adding organization:', error);
+    }
+  };
+
+  /**
    * Handle click event on a job item in the list.
    * Retrieve the job description from the SQLite table based on the job's ID.
    * Set the job description as the value of the "Job Description" TextField.
@@ -160,20 +194,23 @@ function App() {
    */
   const handleJobClickinList = async (job) => {
     try {
-      // Make a GET request to the Flask API endpoint to retrieve job description
-      const response = await axios.get(`http://localhost:5000/get-job/${job.id}`);
+      const response = await axios.get(`http://localhost:5000/get-job/${job.job_id}`);
       const data = response.data;
 
-      // Set the job description in the state to update the "Job Description" TextField
-      if (data.desc) {
-        // Set the value of the Job description, and do other things like word cloud generatopm
-        handleJobDescChange({ target: { value: data.desc } });
+      if (data.job_desc) {
+        handleJobDescChange({ target: { value: data.job_desc } });
       }
-      if (data.company) setSelectedCompany(data.company);
-      setJobName(data.title);
+      // Update this line to set both id and name
+      if (data.org_name) {
+        setSelectedCompany({ 
+          id: data.org_id, 
+          name: data.org_name
+        });
+      }
+      setJobName(data.job_title);
 
-      // Fetch the company name based on org_id
-      if(data.org_id) fetchCompanyName(data.org_id);
+      // Remove this since we're already setting the company info above
+      // if(data.org_id) fetchCompanyName(data.org_id);
 
     } catch (error) {
       console.log('Error in handleJobClickinList():', error);
@@ -195,17 +232,24 @@ function App() {
     }
 
   /**
-   * Handles the analyze button click event.
-   * Calls the OpenAI API with the provided 'job_desc' to extract keywords from the file 'resume_fname'
+   * Handles the Analyze button click event.
+   * Calls the OpenAI API with the provided 'job_desc' to extract keywords.
+   * Analyzes the file named by 'resume_fname' to find which of the keywords match or not.
+   * Calls the end-point /analyze
    */
   const handleAnalyze = () => {
+    if (!resume_fname) {
+      alert(G_ALERT_RESUMEFILENOTSET);
+      return;
+    }
+    
     axios.post('http://localhost:5000/analyze', { job_desc, resume_fname })
       .then(response => {
         setFoundKeywords(response.data.found_keywords_arr);
         setMissingKeywords(response.data.missing_keywords_arr);
       })
       .catch(error => {
-        console.log('Analyze this request error:', error);
+        console.log('handleAnalyze() error:', error);
       });
   };
 
@@ -251,7 +295,10 @@ function App() {
     }
   };
 
-  // handleFileOpen
+  /**
+   * handleFileOpen() 
+   * Opens a file
+   **/
   const handleFileOpen = () => {
     document.getElementById('file-input').click();
   };
@@ -269,20 +316,29 @@ function App() {
     const titleColumnWidth = '200px'; 
     const rowHeight = '35px';
 
+    // Enhanced logging
+    useEffect(() => {
+      console.log('ListJobsTable rendered with job:', {
+        job_id: job.job_id,
+        job_title: job.job_title,
+        org_name: job.org_name
+      });
+    }, [job]);
+
     return (
       <TableContainer component={Paper} elevation={0} sx={{ width: '100%' }}>
         <Table sx={{ tableLayout: 'fixed', width: '100%' }} aria-label="Jobs table">
           <TableBody>
             <TableRow
-              key={job.id}
+              key={job.job_id}
               sx={{ '&:last-child td, &:last-child th': { border: 0 }, height: rowHeight, padding: "0px" }}
             >
               <TableCell component="th" scope="row" sx={{ width: chipColumnWidth, maxWidth: chipColumnWidth, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: "0px" }}>
-                <Chip label={job.org} color="primary" size="small" sx={{ mb: 1, mr: 1, ml: 1 }} />
+                <Chip label={job.org_name} color="primary" size="small" sx={{ mb: 1, mr: 1, ml: 1 }} />
               </TableCell>
               <TableCell align="left" sx={{ width: titleColumnWidth, padding: "0px"}}>
                 <ListItemButton onClick={() => handleJobClickinList(job)}>
-                  {job.title}
+                  {job.job_title}
                 </ListItemButton>
               </TableCell>
             </TableRow>
@@ -323,7 +379,7 @@ function App() {
             </Button>
 
             {/* Filename text field */}
-            <TextField label="Resume" 
+            <TextField label={G_RESUME_TXT}
               className="resume-filename" 
               variant="filled" 
               size="small" 
@@ -349,20 +405,65 @@ function App() {
                 value={jobName}
                 onChange={(e) => setJobName(e.target.value)}
               />
-              <Select
-                value={selectedCompany}
-                onChange={(e) => setSelectedCompany(e.target.value)}
-                displayEmpty
-                size="small"
-                sx={{ minWidth: 200 }}
-              >
-                <MenuItem value="" disabled>{G_SELECT_COMPANY_TXT}</MenuItem>
-                {companies.map((company) => (
-                  <MenuItem key={company.id} value={company.name}>
-                    {company.name}
-                  </MenuItem>
-                ))}
-              </Select>
+              {/* Update the Select component and MenuItems */}
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Select
+                  value={selectedCompany.id}
+                  onChange={(e) => {
+                    const org = companies.find(c => c.id === e.target.value);
+                    setSelectedCompany({ id: org.id, name: org.name });
+                  }}
+                  displayEmpty
+                  size="small"
+                  sx={{ minWidth: 200 }}
+                >
+                  <MenuItem value="" disabled>{G_SELECT_COMPANY_TXT}</MenuItem>
+                  {companies.map((org) => (
+                    <MenuItem key={org.id} value={org.id}>
+                      {org.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+                <IconButton 
+                  color="primary" 
+                  onClick={() => setOpenNewOrgDialog(true)}
+                  sx={{ ml: 1 }}
+                >
+                  <AddCircleIcon />
+                </IconButton>
+              </Box>
+
+              {/* Add Organization Dialog */}
+              <Dialog open={openNewOrgDialog} onClose={() => setOpenNewOrgDialog(false)}>
+                <DialogTitle>{G_NAME_OF_ORGANIZATION_TXT}</DialogTitle>
+                <DialogContent>
+                  <TextField
+                    autoFocus
+                    margin="dense"
+                    label={G_SHORT_NAME_TXT}
+                    fullWidth
+                    value={newOrgShortName}
+                    onChange={(e) => setNewOrgShortName(e.target.value)}
+                    helperText="Brief name or acronym (e.g., IBM)"
+                  />
+                  <TextField
+                    margin="dense"
+                    label={G_FULL_ORG_NAME_TXT}
+                    fullWidth
+                    value={newOrgLongName}
+                    onChange={(e) => setNewOrgLongName(e.target.value)}
+                    helperText="Complete organization name (e.g., International Business Machines)"
+                  />
+                </DialogContent>
+                <DialogActions>
+                  <Button onClick={() => {
+                    setOpenNewOrgDialog(false);
+                    setNewOrgShortName('');
+                    setNewOrgLongName('');
+                  }}>Cancel</Button>
+                  <Button onClick={handleAddOrg} variant="contained">Add</Button>
+                </DialogActions>
+              </Dialog>
               <Button variant="contained" startIcon={<EditIcon />} onClick={editCompany} sx={{ pl: 2, pr: 2 }}>
                 {G_EDIT_TXT}
               </Button>
@@ -387,7 +488,7 @@ function App() {
                 <List sx={{ maxHeight: 800, overflow: 'auto' }}>
 
                   {jobList.map((job) => (
-                    <ListJobsTable key={job.id} job={job} handleJobClickinList={handleJobClickinList}/>
+                    <ListJobsTable key={job.job_id} job={job} handleJobClickinList={handleJobClickinList}/>
                   ))}
 
                 </List>
@@ -410,10 +511,11 @@ function App() {
             {/* The output pane is where we display all the keywords */}
             <Button 
               variant="contained" 
-              endIcon={<EditNoteIcon />}
+              endIcon={<FindInPageIcon />}
               sx={{mb:5}} 
-              onClick={handleAnalyze} >
-              {G_KEYBUTTON_TXT}
+              onClick={handleAnalyze}
+              disabled={!resume_fname} >
+              {G_ANALYZE_TXT}
             </Button>
             
             <div className="keywords-pane">
@@ -424,14 +526,26 @@ function App() {
                   height: 150,
                   width: '95%'
                 }}>
-                <Stack direction="row"  flexWrap="wrap" spacing={1}>
+                <Stack direction="row" flexWrap="wrap">
                 {found_keywords.map((keyword, index) => (
-                    <Chip label={keyword} color="success" size="small" icon={<CheckCircleIcon />} sx={{mb:1, mr:1, ml:1}} />
+                    <Chip 
+                      key={index}
+                      label={keyword} 
+                      color="success" 
+                      size="small"
+                      icon={<CheckCircleIcon />} 
+                      sx={{mb:1, mr:1, ml:1, py:1}} />
                 ))}
                 {missing_keywords_arr.map((keyword, index) => (
-                    <Chip label={keyword} color="error" size="small" icon={<ErrorIcon />} sx={{mb:1, mr:1, ml:1}} />
+                    <Chip 
+                      key={index}
+                      label={keyword} 
+                      color="error" 
+                      size="small" 
+                      icon={<ErrorIcon />} 
+                      sx={{mb:1, mr:1, ml:1, py:1}} />
                 ))}
-              </Stack>
+                </Stack>
               </Box>
             </div>
           </Grid>

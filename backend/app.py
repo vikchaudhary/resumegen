@@ -66,7 +66,25 @@ def initialize_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS org (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL
+            short_name TEXT NOT NULL,
+            long_name TEXT
+        )
+    ''')
+
+    # Create job_status table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS job_status (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            display_order INTEGER NOT NULL UNIQUE
+        )
+    ''')
+
+    # Create location table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS location (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE
         )
     ''')
 
@@ -78,10 +96,54 @@ def initialize_db():
             desc TEXT NOT NULL,
             owner_id INTEGER NOT NULL,
             org_id INTEGER NOT NULL,
+            status_id INTEGER,
+            location_id INTEGER,
+            min_salary INTEGER,
+            max_salary INTEGER,
+            fit_rating INTEGER CHECK (fit_rating BETWEEN 1 AND 5),
+            match_percentage INTEGER CHECK (match_percentage BETWEEN 0 AND 100),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (owner_id) REFERENCES user (id),
-            FOREIGN KEY (org_id) REFERENCES org (id)
+            FOREIGN KEY (org_id) REFERENCES org (id),
+            FOREIGN KEY (status_id) REFERENCES job_status (id),
+            FOREIGN KEY (location_id) REFERENCES location (id),
+            CHECK (max_salary IS NULL OR min_salary IS NULL OR max_salary > min_salary)
         )
     ''')
+
+    # Populate job_status table with initial values
+    # cursor.execute('DELETE FROM job_status')
+    # statuses = [
+    #     (1, 'Exploring'),
+    #     (2, 'Referral Hunt'),
+    #     (3, 'Open'),
+    #     (4, 'Applied'),
+    #     (5, 'Engaged'),
+    #     (6, 'Recruiter Screen'),
+    #     (7, 'HM Interview'),
+    #     (8, 'Panel Interviews'),
+    #     (9, 'Declined'),
+    #     (10, 'Accepted'),
+    #     (11, 'Ghosted'),
+    #     (12, 'Rejected'),
+    #     (13, 'Unqualified'),
+    #     (14, 'Uninterested'),
+    #     (15, 'Unavailable'),
+    #     (16, 'Late')
+    # ]
+    # cursor.executemany('INSERT INTO job_status (display_order, name) VALUES (?, ?)', statuses)
+
+    # # Populate location table with initial values
+    # cursor.execute('DELETE FROM location')
+    # locations = [
+    #     ('SF',), ('Menlo Park',), ('Mountain View',), ('Sunnyvale',),
+    #     ('San Mateo',), ('Redwood City',), ('Santa Clara',), ('San Jose',),
+    #     ('Cupertino',), ('Barcelona',), ('Boise',), ('Los Gatos',),
+    #     ('New York',), ('Oakland',), ('Palo Alto',), ('Remote',),
+    #     ('Berlin',), ('London',), ('Tel Aviv',), ('Seattle',)
+    # ]
+    # cursor.executemany('INSERT INTO location (name) VALUES (?)', locations)
 
     conn.commit()
     conn.close()
@@ -96,6 +158,7 @@ def home():
 # ---------------------------------------------------------
 # Save Job endpoint
 # ---------------------------------------------------------
+# Update save_job endpoint to handle new fields
 @app.route('/save-job', methods=['POST'])
 def save_job():
     try:
@@ -104,50 +167,101 @@ def save_job():
         job_desc = data.get('job_desc')
         owner_id = data.get('owner_id')
         org_id = data.get('org_id')
+        status_id = data.get('status_id')
+        location_id = data.get('location_id')
+        min_salary = data.get('min_salary')
+        max_salary = data.get('max_salary')
+        fit_rating = data.get('fit_rating')
 
-        print("save-job() Saved: ", job_title, " | ", owner_id, " | ", org_id)  # debug
+        # Validate required fields
+        if not all([job_title, job_desc, owner_id, org_id]):
+            return jsonify({'error': 'Missing required fields'}), 400
 
-        # Find the owner and org objects based on their IDs
+        # Find the owner and org objects
         owner = get_user(owner_id)
         org = get_org(org_id)
 
         if owner is None or org is None:
             return jsonify({'save_job() error': 'Invalid owner or org ID'})
 
-        # Insert the job into the database
-        insert_job(job_title, job_desc, owner_id, org_id)
+        # Insert the job with all fields
+        insert_job(job_title, job_desc, owner_id, org_id, status_id, 
+                  location_id, min_salary, max_salary, fit_rating)
 
         return jsonify({'save_job() message': 'Job saved successfully'})
 
     except Exception as e:
         print("save_job: error: ", str(e))
-        return jsonify({'save_job() error': str(e)}), 500
+        return jsonify({'error': str(e)}), 500
 
 # ---------------------------------------------------------
 # Get Jobs endpoint -- Gets a list of all the jobs
 # ---------------------------------------------------------
+# Update get_jobs endpoint to include new fields
 @app.route('/get-jobs/', methods=['GET'])
 def get_jobs():
     try:
-        # Establish a connection to the SQLite database
         conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
 
-        # Execute the SQL query to fetch the jobs from the 'job' table
-        cursor.execute('SELECT job.id, job.title, org.id, org.short_name FROM job INNER JOIN org ON job.org_id=org.id')
+        cursor.execute('''
+            SELECT j.id, j.title, j.org_id, o.short_name, 
+                   j.status_id, s.name as status_name,
+                   j.location_id, l.name as location_name,
+                   j.min_salary, j.max_salary, j.fit_rating,
+                   j.created_at, j.updated_at
+            FROM job j
+            INNER JOIN org o ON j.org_id = o.id
+            LEFT JOIN job_status s ON j.status_id = s.id
+            LEFT JOIN location l ON j.location_id = l.id
+            ORDER BY j.updated_at DESC
+        ''')
         jobs = cursor.fetchall()
 
-        # Convert the fetched jobs to a list of dictionaries
-        jobs_list = [{'job_id': job[0], 'job_title': job[1], 'org_id': job[2], 'org_name': job[3]} for job in jobs]
+        jobs_list = [{
+            'job_id': job[0],
+            'job_title': job[1],
+            'org_id': job[2],
+            'org_name': job[3],
+            'status_id': job[4],
+            'status_name': job[5],
+            'location_id': job[6],
+            'location_name': job[7],
+            'min_salary': job[8],
+            'max_salary': job[9],
+            'fit_rating': job[10],
+            'created_at': job[11],
+            'updated_at': job[12]
+        } for job in jobs]
 
-        # Close the database connection
         conn.close()
-        
-        # Return the list of jobs as a JSON response
         return jsonify(jobs_list)
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+def insert_job(title, desc, owner_id, org_id, status_id=None, 
+               location_id=None, min_salary=None, max_salary=None, 
+               fit_rating=None):
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            INSERT INTO job (
+                title, desc, owner_id, org_id, status_id, 
+                location_id, min_salary, max_salary, fit_rating
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (title, desc, owner_id, org_id, status_id, 
+              location_id, min_salary, max_salary, fit_rating))
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        print("insert_job() error:", str(e))
+        return {'error': str(e)}
+
 
 # ---------------------------------------------------------
 # Get Job endpoint -- Gets the job object from it's 'id'
@@ -155,23 +269,41 @@ def get_jobs():
 @app.route('/get-job/<int:job_id>', methods=['GET'])
 def get_job(job_id):
     try:
-        # Connect to the SQLite database
         conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
 
-        # Execute the query to retrieve the job with the given job_id
-        cursor.execute('SELECT job.id, job.title, job.desc, job.owner_id, job.org_id, org.short_name FROM job INNER JOIN org ON job.org_id=org.id WHERE job.id=?', (job_id,))
+        cursor.execute('''
+            SELECT j.id, j.title, j.desc, j.owner_id, j.org_id, 
+                   o.short_name, j.status_id, s.name as status_name,
+                   j.location_id, l.name as location_name,
+                   j.min_salary, j.max_salary, j.fit_rating,
+                   j.match_percentage, j.created_at, j.updated_at
+            FROM job j
+            INNER JOIN org o ON j.org_id = o.id
+            LEFT JOIN job_status s ON j.status_id = s.id
+            LEFT JOIN location l ON j.location_id = l.id
+            WHERE j.id = ?
+        ''', (job_id,))
         job = cursor.fetchone()
 
         if job:
-            # Create a dictionary with job data
             job_data = {
                 'job_id': job[0],
                 'job_title': job[1],
                 'job_desc': job[2],
                 'job_owner_id': job[3],
                 'org_id': job[4],
-                'org_name': job[5]
+                'org_name': job[5],
+                'status_id': job[6],
+                'status_name': job[7],
+                'location_id': job[8],
+                'location_name': job[9],
+                'min_salary': job[10],
+                'max_salary': job[11],
+                'fit_rating': job[12],
+                'match_percentage': job[13],
+                'created_at': job[14],
+                'updated_at': job[15]
             }
             return jsonify(job_data)
         else:
@@ -331,10 +463,6 @@ def generate_wordcloud():
         return jsonify({'error': str(e)}), 500
 
 
-
-
-
-
 # ---------------------------------------------------------
 # get_user
 # ---------------------------------------------------------
@@ -441,35 +569,8 @@ def search_keywords(fname, keyword_arr):
     if file is not None:
         the_file_txt = file.read()    # contents of the file
         the_file = the_file_txt.lower()
-
-        chatgpt_keyword_arr = [
-            'API',
-            'platform',
-            'communication skills',
-            'customer-centric mindset',
-            'customer support',
-            'data-driven processes',
-            'deep technical',
-            'deployment systems',
-            'engineering',
-            'execution focused',
-            'global platform',
-            'identity management',
-            'product content',
-            'product designers',
-            'product development',
-            'product management',
-            'product roadmap',
-            'strategic',
-            'implementation',
-            'customer support'
-        ]
         missing_keywords_arr = []
         found_keywords_arr = []
-
-        # Combine the lists and remove duplicates.
-        # Append to the first list those elements of the second list that aren't in the first
-        combined_arr = keyword_arr + list(set(chatgpt_keyword_arr) - set(keyword_arr))
 
         count=0
         for index, keyword in enumerate(keyword_arr, start=1):
@@ -604,7 +705,331 @@ def generate_resume():
         return jsonify({ 'edited_txt': response.choices[0].text })
 
 
+# ---------------------------------------------------------
+# Get Job Statuses endpoint
+# ---------------------------------------------------------
+@app.route('/get-job-statuses', methods=['GET'])
+def get_job_statuses():
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT id, name, display_order FROM job_status ORDER BY display_order ASC')
+        statuses = cursor.fetchall()
+        conn.close()
+
+        status_list = [{'id': status[0], 'name': status[1], 'display_order': status[2]} for status in statuses]
+        return jsonify(status_list)
+
+    except Exception as e:
+        print("get_job_statuses: error:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+# ---------------------------------------------------------
+# Get Locations endpoint
+# ---------------------------------------------------------
+@app.route('/get-locations', methods=['GET'])
+def get_locations():
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT id, name FROM location ORDER BY name ASC')
+        locations = cursor.fetchall()
+        conn.close()
+
+        location_list = [{'id': loc[0], 'name': loc[1]} for loc in locations]
+        return jsonify(location_list)
+
+    except Exception as e:
+        print("get_locations: error:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+# ---------------------------------------------------------
+# Update Job Status endpoint
+# ---------------------------------------------------------
+@app.route('/update-job-status', methods=['PUT'])
+def update_job_status():
+    try:
+        data = request.get_json()
+        job_id = data.get('job_id')
+        status_id = data.get('status_id')
+
+        if not job_id or not status_id:
+            return jsonify({'error': 'Job ID and status ID are required'}), 400
+
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+
+        cursor.execute('UPDATE job SET status_id = ? WHERE id = ?', (status_id, job_id))
+        conn.commit()
+        conn.close()
+
+        return jsonify({'message': 'Job status updated successfully'})
+
+    except Exception as e:
+        print("update_job_status: error:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+# ---------------------------------------------------------
+# Update Job Location endpoint
+# ---------------------------------------------------------
+@app.route('/update-job-location', methods=['PUT'])
+def update_job_location():
+    try:
+        data = request.get_json()
+        job_id = data.get('job_id')
+        location_id = data.get('location_id')
+
+        if not job_id or not location_id:
+            return jsonify({'error': 'Job ID and location ID are required'}), 400
+
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+
+        cursor.execute('UPDATE job SET location_id = ? WHERE id = ?', (location_id, job_id))
+        conn.commit()
+        conn.close()
+
+        return jsonify({'message': 'Job location updated successfully'})
+
+    except Exception as e:
+        print("update_job_location: error:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+# ---------------------------------------------------------
+# Update Job Fit Rating endpoint
+# ---------------------------------------------------------
+@app.route('/update-job-fit', methods=['PUT'])
+def update_job_fit():
+    try:
+        data = request.get_json()
+        job_id = data.get('job_id')
+        fit_rating = data.get('fit_rating')
+
+        if not job_id or not fit_rating or not (1 <= fit_rating <= 5):
+            return jsonify({'error': 'Job ID and valid fit rating (1-5) are required'}), 400
+
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+
+        cursor.execute('UPDATE job SET fit_rating = ? WHERE id = ?', (fit_rating, job_id))
+        conn.commit()
+        conn.close()
+
+        return jsonify({'message': 'Job fit rating updated successfully'})
+
+    except Exception as e:
+        print("update_job_fit: error:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+# ... existing code ...
+
+# ---------------------------------------------------------
+# Update Job Salary endpoint
+# ---------------------------------------------------------
+@app.route('/update-job-salary', methods=['PUT'])
+def update_job_salary():
+    try:
+        data = request.get_json()
+        job_id = data.get('job_id')
+        min_salary = data.get('min_salary')
+        max_salary = data.get('max_salary')
+
+        if not job_id:
+            return jsonify({'error': 'Job ID is required'}), 400
+        if max_salary and min_salary and max_salary <= min_salary:
+            return jsonify({'error': 'Maximum salary must be greater than minimum salary'}), 400
+
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+
+        cursor.execute('UPDATE job SET min_salary = ?, max_salary = ? WHERE id = ?', 
+                      (min_salary, max_salary, job_id))
+        conn.commit()
+        conn.close()
+
+        return jsonify({'message': 'Job salary updated successfully'})
+
+    except Exception as e:
+        print("update_job_salary: error:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+# ---------------------------------------------------------
+# Update Job Match Percentage endpoint
+# ---------------------------------------------------------
+@app.route('/update-job-match', methods=['PUT'])
+def update_job_match():
+    try:
+        data = request.get_json()
+        job_id = data.get('job_id')
+        match_percentage = data.get('match_percentage')
+
+        if not job_id or not isinstance(match_percentage, int) or not (0 <= match_percentage <= 100):
+            return jsonify({'error': 'Job ID and valid match percentage (0-100) are required'}), 400
+
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+
+        cursor.execute('UPDATE job SET match_percentage = ? WHERE id = ?', 
+                      (match_percentage, job_id))
+        conn.commit()
+        conn.close()
+
+        return jsonify({'message': 'Job match percentage updated successfully'})
+
+    except Exception as e:
+        print("update_job_match: error:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+# ---------------------------------------------------------
+# Search and Filter Jobs endpoint
+# ---------------------------------------------------------
+@app.route('/search-jobs', methods=['GET'])
+def search_jobs():
+    try:
+        status_id = request.args.get('status_id')
+        location_id = request.args.get('location_id')
+        min_salary = request.args.get('min_salary')
+        max_salary = request.args.get('max_salary')
+        keyword = request.args.get('keyword')
+
+        query = '''
+            SELECT j.id, j.title, j.org_id, o.short_name, 
+                   j.status_id, s.name as status_name,
+                   j.location_id, l.name as location_name,
+                   j.min_salary, j.max_salary, j.fit_rating,
+                   j.match_percentage, j.created_at, j.updated_at
+            FROM job j
+            INNER JOIN org o ON j.org_id = o.id
+            LEFT JOIN job_status s ON j.status_id = s.id
+            LEFT JOIN location l ON j.location_id = l.id
+            WHERE 1=1
+        '''
+        params = []
+
+        if status_id:
+            query += ' AND j.status_id = ?'
+            params.append(status_id)
+        if location_id:
+            query += ' AND j.location_id = ?'
+            params.append(location_id)
+        if min_salary:
+            query += ' AND j.min_salary >= ?'
+            params.append(min_salary)
+        if max_salary:
+            query += ' AND j.max_salary <= ?'
+            params.append(max_salary)
+        if keyword:
+            query += ' AND (j.title LIKE ? OR j.desc LIKE ?)'
+            keyword_param = f'%{keyword}%'
+            params.extend([keyword_param, keyword_param])
+
+        query += ' ORDER BY j.updated_at DESC'
+
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        jobs = cursor.fetchall()
+
+        jobs_list = [{
+            'job_id': job[0],
+            'job_title': job[1],
+            'org_id': job[2],
+            'org_name': job[3],
+            'status_id': job[4],
+            'status_name': job[5],
+            'location_id': job[6],
+            'location_name': job[7],
+            'min_salary': job[8],
+            'max_salary': job[9],
+            'fit_rating': job[10],
+            'match_percentage': job[11],
+            'created_at': job[12],
+            'updated_at': job[13]
+        } for job in jobs]
+
+        conn.close()
+        return jsonify(jobs_list)
+
+    except Exception as e:
+        print("search_jobs: error:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+# ---------------------------------------------------------
+# Job Statistics endpoint
+# ---------------------------------------------------------
+@app.route('/job-statistics', methods=['GET'])
+def get_job_statistics():
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+
+        # Status distribution
+        cursor.execute('''
+            SELECT s.name, COUNT(j.id) as count
+            FROM job_status s
+            LEFT JOIN job j ON s.id = j.status_id
+            GROUP BY s.id, s.name
+            ORDER BY s.display_order
+        ''')
+        status_stats = [{'status': row[0], 'count': row[1]} for row in cursor.fetchall()]
+
+        # Location distribution
+        cursor.execute('''
+            SELECT l.name, COUNT(j.id) as count
+            FROM location l
+            LEFT JOIN job j ON l.id = j.location_id
+            GROUP BY l.id, l.name
+            ORDER BY count DESC
+        ''')
+        location_stats = [{'location': row[0], 'count': row[1]} for row in cursor.fetchall()]
+
+        # Salary statistics
+        cursor.execute('''
+            SELECT 
+                AVG(min_salary) as avg_min_salary,
+                AVG(max_salary) as avg_max_salary,
+                MIN(min_salary) as lowest_salary,
+                MAX(max_salary) as highest_salary
+            FROM job
+            WHERE min_salary IS NOT NULL OR max_salary IS NOT NULL
+        ''')
+        salary_stats = cursor.fetchone()
+
+        # Application timeline
+        cursor.execute('''
+            SELECT DATE(created_at) as date, COUNT(*) as count
+            FROM job
+            GROUP BY DATE(created_at)
+            ORDER BY date DESC
+            LIMIT 30
+        ''')
+        timeline_stats = [{'date': row[0], 'count': row[1]} for row in cursor.fetchall()]
+
+        conn.close()
+
+        return jsonify({
+            'status_distribution': status_stats,
+            'location_distribution': location_stats,
+            'salary_statistics': {
+                'average_min_salary': salary_stats[0],
+                'average_max_salary': salary_stats[1],
+                'lowest_salary': salary_stats[2],
+                'highest_salary': salary_stats[3]
+            },
+            'application_timeline': timeline_stats
+        })
+
+    except Exception as e:
+        print("get_job_statistics: error:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+# ---------------------------------------------------------
+# Main
+# ---------------------------------------------------------
 if __name__ == "__main__":
     # Create the database tables
     initialize_db()
+    
     app.run()

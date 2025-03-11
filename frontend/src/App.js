@@ -48,9 +48,22 @@ import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
+// Add these imports at the top with other Material-UI imports
+import CssBaseline from '@mui/material/CssBaseline';
+import Drawer from '@mui/material/Drawer';
+import ListItemIcon from '@mui/material/ListItemIcon';
+import DescriptionIcon from '@mui/icons-material/Description';
+import WorkIcon from '@mui/icons-material/Work';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+// Add these new imports
+import JobDetailView from './components/JobDetailView.jsx';
+import LocationSelect from './components/LocationSelect.jsx';
+import SalaryRangeInput from './components/SalaryRangeInput.jsx';
+import Dashboard from './components/Dashboard.jsx';
 
 /* Theme 
-
    This is a TypeScript type annotation : ThemeOptions, which specifies that the themeOptions constant must conform to the structure defined by the ThemeOptions interface (which is imported from '@mui/material/styles').
 */
 export const themeOptions: ThemeOptions = {
@@ -79,6 +92,7 @@ const G_ALERT_RESUMEFILENOTSET = 'Please select a resume file first';
 const G_NAME_OF_ORGANIZATION_TXT = 'Name of organization';
 const G_SHORT_NAME_TXT = "Short name";
 const G_FULL_ORG_NAME_TXT = "Full org name";
+const drawerWidth = 240;
 
 function App() {
   /**
@@ -105,7 +119,12 @@ function App() {
   const [openNewOrgDialog, setOpenNewOrgDialog] = useState(false);
   const [newOrgShortName, setNewOrgShortName] = useState('');
   const [newOrgLongName, setNewOrgLongName] = useState('');
-  
+  /* Added with new design */
+  const [currentView, setCurrentView] = useState('resume');
+  const [selectedJobId, setSelectedJobId] = useState(null);
+  const [selectedLocation, setSelectedLocation] = useState('');
+  const [minSalary, setMinSalary] = useState('');
+  const [maxSalary, setMaxSalary] = useState('');
 
   /* When the component first mounts, useEffect() triggers */
   useEffect(() => {
@@ -121,7 +140,8 @@ function App() {
       console.log("fetchJobs(): data.jobs:", data)
       setJobList(data);
     } catch (error) {
-       console.log('Error in fetchJobs():', error);
+       console.log('Error in fetchJobs():', error.message);
+       setJobList([]); // Reset to empty array on error
     }
   };
 
@@ -129,17 +149,22 @@ function App() {
   const fetchCompanies = async () => {
     try {
       const response = await axios.get('http://localhost:5000/get-companies');
-
       /* When the response returns, update the "companies" state with the data */
       setCompanies(response.data);
     } catch (error) {
-      console.log('Error in fetchCompanies():', error);
+      console.error('Error in fetchCompanies():', error.message);
+      setCompanies([]); // Reset to empty array on error
     }
   };
 
   const saveJob = async () => {
-    const ownerID = 1; // Hardcode owner ID
+    if (!jobName || !job_desc || !selectedCompany.id) {
+      console.error('Missing required fields for saving job');
+      return;
+    }
 
+    const ownerID = 1; // Hardcode owner ID
+    
     const jobData = {
       job_title: jobName,
       job_desc: job_desc,
@@ -152,11 +177,16 @@ function App() {
       console.log(response.data.message);
       fetchJobs();
     } catch (error) {
-      console.log('Error in saveJob():', error);
+      console.error('Error in saveJob():', error.message);
     }
   };
 
   const editCompany = async () => {
+    if (!jobName || !selectedCompany.id) {
+      console.error('Missing job name or company information');
+      return;
+    }
+
     try {
       await axios.post('http://localhost:5000/update-job-company', {
         job_name: jobName,
@@ -164,7 +194,7 @@ function App() {
       });
       fetchJobs();
     } catch (error) {
-      console.log('Error updating company in editCompany():', error);
+      console.error('Error updating company in editCompany():', error.message);
     }
   };
 
@@ -172,6 +202,11 @@ function App() {
    * handleAddOrg–adds a new org to the org table
    */
   const handleAddOrg = async () => {
+    if (!newOrgShortName || !newOrgLongName) {
+      console.error('Both short name and full name are required');
+      return;
+    }
+
     try {
       const response = await axios.post('http://localhost:5000/add-org', {
         short_name: newOrgShortName,
@@ -180,9 +215,9 @@ function App() {
       setNewOrgShortName('');
       setNewOrgLongName('');
       setOpenNewOrgDialog(false);
-      fetchCompanies(); // Refresh the list
+      fetchCompanies(); /* Refresh the list of orgs */
     } catch (error) {
-      console.error('add-org() - Error adding organization:', error);
+      console.error('Error adding organization:', error.message);
     }
   };
 
@@ -193,14 +228,23 @@ function App() {
    *   job - The job object clicked in the list.
    */
   const handleJobClickinList = async (job) => {
+    if (!job?.job_id) {
+      console.error('Invalid job data');
+      return;
+    }
+
     try {
       const response = await axios.get(`http://localhost:5000/get-job/${job.job_id}`);
       const data = response.data;
 
+      if (!data) {
+        console.error('No data received for job');
+        return;
+      }
+
       if (data.job_desc) {
         handleJobDescChange({ target: { value: data.job_desc } });
       }
-      // Update this line to set both id and name
       if (data.org_name) {
         setSelectedCompany({ 
           id: data.org_id, 
@@ -208,28 +252,32 @@ function App() {
         });
       }
       setJobName(data.job_title);
-
-      // Remove this since we're already setting the company info above
-      // if(data.org_id) fetchCompanyName(data.org_id);
-
     } catch (error) {
-      console.log('Error in handleJobClickinList():', error);
+      console.error('Error in handleJobClickinList():', error.message);
     }
   };
 
   /**
-   * Fetch company name from the backend
-   * @param {int} orgID 
-  */
-    const fetchCompanyName = async (orgID) => {
+   * fetchCompanyName() - Fetch org name from its id
+   */
+  const fetchCompanyName = async (orgID) => {
+      if (!orgID) {
+        console.error('Organization ID is required');
+        return;
+      }
+
       try {
         const response = await axios.get(`http://localhost:5000/get-company-name/${orgID}`);
-        console.log("fetchCompanyName(): response.data:", response.data)
-        setSelectedCompany(response.data.short_name);
+        console.log("fetchCompanyName(): response.data:", response.data);
+        setSelectedCompany({
+          id: orgID,
+          name: response.data.short_name
+        });
       } catch (error) {
-          console.log('Error fetching company name:', error);
+        console.error('Error fetching company name:', error.message);
+        setSelectedCompany({ id: '', name: '' }); // Reset on error
       }
-    }
+    };
 
   /**
    * Handles the Analyze button click event.
@@ -303,6 +351,19 @@ function App() {
     document.getElementById('file-input').click();
   };
 
+  // Add handlers for new components
+  const handleLocationChange = (event) => {
+    setSelectedLocation(event.target.value);
+  };
+
+  const handleMinSalaryChange = (event) => {
+    setMinSalary(event.target.value);
+  };
+
+  const handleMaxSalaryChange = (event) => {
+    setMaxSalary(event.target.value);
+  };
+
   /**
    * ListJobsTable
    * Create a HTML table structure. The outer <TableContainer component={Paper}> 
@@ -351,214 +412,286 @@ function App() {
   // This is the web application, i.e. the output
   return (
     <div>
-      <Box sx={{ flexGrow: 1 }}>
-        <AppBar position="static">
+      <Box sx={{ display: 'flex' }}>
+        <CssBaseline />
+        <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
           <Toolbar variant="dense">
-            <IconButton edge="start" color="inherit" aria-label="menu" sx={{ mr: 2 }}>
-              <MenuIcon />
-            </IconButton>
             <Typography variant="h6" color="inherit" component="div">
               ResumeAI
             </Typography>
           </Toolbar>
         </AppBar>
-      </Box>
-      <br></br>
-      <Box sx={{ flexGrow: 1 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={7}>
-          
-            {/* Open file input */}
-            <input type="file" id="file-input" onChange={handleFileSelect} style={{ display: 'none' }} />
-            <Button 
-              variant="contained" 
-              size="large" 
-              sx={{ mb: 2, mr: 2 }} 
-              onClick={handleFileOpen} 
-              endIcon={<FileOpenIcon />}>{G_OPENRESUME_TXT}
-            </Button>
 
-            {/* Filename text field */}
-            <TextField label={G_RESUME_TXT}
-              className="resume-filename" 
-              variant="filled" 
-              size="small" 
-              sx={{ mb: 2 }} 
-              focused value={resume_fname} 
-              InputProps={{ readOnly: true }} />
-          
-            {/* Job Description */}
-            <TextField label="Job Description" 
-              className="input-pane" 
-              variant="filled" 
-              multiline rows={20} 
-              sx={{ mb: 1 }} 
-              defaultValue={job_desc} 
-              onChange={handleJobDescChange} />
+        <Drawer
+          variant="permanent"
+          sx={{
+            width: drawerWidth,
+            flexShrink: 0,
+            '& .MuiDrawer-paper': {
+              width: drawerWidth,
+              boxSizing: 'border-box',
+            },
+          }}
+        >
+          <Toolbar />
+          <Box sx={{ overflow: 'auto' }}>
+            <List>
+              <ListItem disablePadding>
+                <ListItemButton selected={currentView === 'resume'} onClick={() => setCurrentView('resume')}>
+                  <ListItemIcon><DescriptionIcon /></ListItemIcon>
+                  <ListItemText primary="Resume Analysis" />
+                </ListItemButton>
+              </ListItem>
+              <ListItem disablePadding>
+                <ListItemButton selected={currentView === 'jobs'} onClick={() => setCurrentView('jobs')}>
+                  <ListItemIcon><WorkIcon /></ListItemIcon>
+                  <ListItemText primary="Job Management" />
+                </ListItemButton>
+              </ListItem>
+              <ListItem disablePadding>
+                <ListItemButton selected={currentView === 'locations'} onClick={() => setCurrentView('locations')}>
+                  <ListItemIcon><LocationOnIcon /></ListItemIcon>
+                  <ListItemText primary="Locations" />
+                </ListItemButton>
+              </ListItem>
+              <ListItem disablePadding>
+                <ListItemButton selected={currentView === 'salary'} onClick={() => setCurrentView('salary')}>
+                  <ListItemIcon><AttachMoneyIcon /></ListItemIcon>
+                  <ListItemText primary="Salary Analysis" />
+                </ListItemButton>
+              </ListItem>
+              <ListItem disablePadding>
+                <ListItemButton selected={currentView === 'dashboard'} onClick={() => setCurrentView('dashboard')}>
+                  <ListItemIcon><AssessmentIcon /></ListItemIcon>
+                  <ListItemText primary="Dashboard" />
+                </ListItemButton>
+              </ListItem>
+            </List>
+          </Box>
+        </Drawer>
 
-            {/* Job Name and Company Selection */}
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
-              <TextField
-                label={G_JOBNAME_TXT}
-                fullWidth
-                size="small"
-                value={jobName}
-                onChange={(e) => setJobName(e.target.value)}
-              />
-              {/* Update the Select component and MenuItems */}
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Select
-                  value={selectedCompany.id}
-                  onChange={(e) => {
-                    const org = companies.find(c => c.id === e.target.value);
-                    setSelectedCompany({ id: org.id, name: org.name });
-                  }}
-                  displayEmpty
-                  size="small"
-                  sx={{ minWidth: 200 }}
-                >
-                  <MenuItem value="" disabled>{G_SELECT_COMPANY_TXT}</MenuItem>
-                  {companies.map((org) => (
-                    <MenuItem key={org.id} value={org.id}>
-                      {org.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-                <IconButton 
-                  color="primary" 
-                  onClick={() => setOpenNewOrgDialog(true)}
-                  sx={{ ml: 1 }}
-                >
-                  <AddCircleIcon />
-                </IconButton>
-              </Box>
+        <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+          <Toolbar />
+          {currentView === 'resume' && (
+            <Grid container spacing={2}>
+              <Grid item xs={7}>
+                {/* Open file input */}
+                <input type="file" id="file-input" onChange={handleFileSelect} style={{ display: 'none' }} />
+                <Button 
+                  variant="contained" 
+                  size="large" 
+                  sx={{ mb: 2, mr: 2 }} 
+                  onClick={handleFileOpen} 
+                  endIcon={<FileOpenIcon />}>{G_OPENRESUME_TXT}
+                </Button>
 
-              {/* Add Organization Dialog */}
-              <Dialog open={openNewOrgDialog} onClose={() => setOpenNewOrgDialog(false)}>
-                <DialogTitle>{G_NAME_OF_ORGANIZATION_TXT}</DialogTitle>
-                <DialogContent>
-                  <TextField
-                    autoFocus
-                    margin="dense"
-                    label={G_SHORT_NAME_TXT}
-                    fullWidth
-                    value={newOrgShortName}
-                    onChange={(e) => setNewOrgShortName(e.target.value)}
-                    helperText="Brief name or acronym (e.g., IBM)"
-                  />
-                  <TextField
-                    margin="dense"
-                    label={G_FULL_ORG_NAME_TXT}
-                    fullWidth
-                    value={newOrgLongName}
-                    onChange={(e) => setNewOrgLongName(e.target.value)}
-                    helperText="Complete organization name (e.g., International Business Machines)"
-                  />
-                </DialogContent>
-                <DialogActions>
-                  <Button onClick={() => {
-                    setOpenNewOrgDialog(false);
-                    setNewOrgShortName('');
-                    setNewOrgLongName('');
-                  }}>Cancel</Button>
-                  <Button onClick={handleAddOrg} variant="contained">Add</Button>
-                </DialogActions>
-              </Dialog>
-              <Button variant="contained" startIcon={<EditIcon />} onClick={editCompany} sx={{ pl: 2, pr: 2 }}>
-                {G_EDIT_TXT}
-              </Button>
-            </Box>
-
-            {/* Save Job button */}
-            <Button 
-              variant="contained" 
-              endIcon={<SaveAsIcon />}
-              onClick={saveJob}>
-                {G_SAVEJOB_TXT}
-              </Button>
-          
-          </Grid>
-
-          {/* Show a list of jobs */}
-          <Grid item xs={5}>
-
-            <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
-              <Paper sx={{ p: 2, width: 600 }}>
-                <Typography variant="h8" component="h4">{G_JOBSHEADER_TXT}</Typography>
-                <List sx={{ maxHeight: 800, overflow: 'auto' }}>
-
-                  {jobList.map((job) => (
-                    <ListJobsTable key={job.job_id} job={job} handleJobClickinList={handleJobClickinList}/>
-                  ))}
-
-                </List>
-              </Paper>
-            </Box>
-
-            {/* Display Word Cloud */}
-            {wordCloudImage && (
-              <CardMedia
-                component="img"
-                height="300"
-                image={`data:image/png;base64,${wordCloudImage}`}
-                alt="Word Cloud"
-              />
-            )}
-          </Grid>
-
-          <Grid item xs={8}>
-
-            {/* The output pane is where we display all the keywords */}
-            <Button 
-              variant="contained" 
-              endIcon={<FindInPageIcon />}
-              sx={{mb:5}} 
-              onClick={handleAnalyze}
-              disabled={!resume_fname} >
-              {G_ANALYZE_TXT}
-            </Button>
-            
-            <div className="keywords-pane">
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  height: 150,
-                  width: '95%'
-                }}>
-                <Stack direction="row" flexWrap="wrap">
-                {found_keywords.map((keyword, index) => (
-                    <Chip 
-                      key={index}
-                      label={keyword} 
-                      color="success" 
-                      size="small"
-                      icon={<CheckCircleIcon />} 
-                      sx={{mb:1, mr:1, ml:1, py:1}} />
-                ))}
-                {missing_keywords_arr.map((keyword, index) => (
-                    <Chip 
-                      key={index}
-                      label={keyword} 
-                      color="error" 
-                      size="small" 
-                      icon={<ErrorIcon />} 
-                      sx={{mb:1, mr:1, ml:1, py:1}} />
-                ))}
-                </Stack>
-              </Box>
-            </div>
-          </Grid>
-
-          <Grid item xs={8}>
-              {/* The pane where we generate a new resume */}
-              <Button variant="contained" sx={{mt:5, mb:5}} onClick={handleGenerate} endIcon={<EditNoteIcon />}>{G_GENERATERESUME_TXT}</Button>
+                {/* Filename text field */}
+                <TextField label={G_RESUME_TXT}
+                  className="resume-filename" 
+                  variant="filled" 
+                  size="small" 
+                  sx={{ mb: 2 }} 
+                  focused value={resume_fname} 
+                  InputProps={{ readOnly: true }} />
               
-              {/* Generate field containing the new resume */}
-              <TextField className="output-pane" label="Edited" variant="filled" multiline rows={20} value={edited_txt} />
-            
-          </Grid>
-        </Grid>
+                {/* Job Description */}
+                <TextField label="Job Description" 
+                  className="input-pane" 
+                  variant="filled" 
+                  multiline rows={20} 
+                  sx={{ mb: 1 }} 
+                  defaultValue={job_desc} 
+                  onChange={handleJobDescChange} />
+
+                {/* Job Name and Company Selection Box */}
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
+                  <TextField
+                    label={G_JOBNAME_TXT}
+                    fullWidth
+                    size="small"
+                    value={jobName}
+                    onChange={(e) => setJobName(e.target.value)}
+                  />
+                  {/* Update the Select component and MenuItems */}
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Select
+                      value={selectedCompany.id}
+                      onChange={(e) => {
+                        const org = companies.find(c => c.id === e.target.value);
+                        setSelectedCompany({ id: org.id, name: org.name });
+                      }}
+                      displayEmpty
+                      size="small"
+                      sx={{ minWidth: 200 }}
+                    >
+                      <MenuItem value="" disabled>{G_SELECT_COMPANY_TXT}</MenuItem>
+                      {companies.map((org) => (
+                        <MenuItem key={org.id} value={org.id}>
+                          {org.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    <IconButton 
+                      color="primary" 
+                      onClick={() => setOpenNewOrgDialog(true)}
+                      sx={{ ml: 1 }}
+                    >
+                      <AddCircleIcon />
+                    </IconButton>
+                  </Box>
+
+                  {/* Add Organization Dialog */}
+                  <Dialog open={openNewOrgDialog} onClose={() => setOpenNewOrgDialog(false)}>
+                    <DialogTitle>{G_NAME_OF_ORGANIZATION_TXT}</DialogTitle>
+                    <DialogContent>
+                      <TextField
+                        autoFocus
+                        margin="dense"
+                        label={G_SHORT_NAME_TXT}
+                        fullWidth
+                        value={newOrgShortName}
+                        onChange={(e) => setNewOrgShortName(e.target.value)}
+                        helperText="Brief name or acronym (e.g., IBM)"
+                      />
+                      <TextField
+                        margin="dense"
+                        label={G_FULL_ORG_NAME_TXT}
+                        fullWidth
+                        value={newOrgLongName}
+                        onChange={(e) => setNewOrgLongName(e.target.value)}
+                        helperText="Complete organization name (e.g., International Business Machines)"
+                      />
+                    </DialogContent>
+                    <DialogActions>
+                      <Button onClick={() => {
+                        setOpenNewOrgDialog(false);
+                        setNewOrgShortName('');
+                        setNewOrgLongName('');
+                      }}>Cancel</Button>
+                      <Button onClick={handleAddOrg} variant="contained">Add</Button>
+                    </DialogActions>
+                  </Dialog>
+                  <Button variant="contained" startIcon={<EditIcon />} onClick={editCompany} sx={{ pl: 2, pr: 2 }}>
+                    {G_EDIT_TXT}
+                  </Button>
+                </Box>
+
+                {/* Save Job button */}
+                <Button 
+                  variant="contained" 
+                  endIcon={<SaveAsIcon />}
+                  onClick={saveJob}>
+                    {G_SAVEJOB_TXT}
+                </Button>
+              </Grid>
+
+              {/* Show a list of jobs */}
+              <Grid item xs={5}>
+                <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+                  <Paper sx={{ p: 2, width: 600 }}>
+                    <Typography variant="subtitle1" component="h4">{G_JOBSHEADER_TXT}</Typography>
+                    <List sx={{ maxHeight: 800, overflow: 'auto' }}>
+
+                      {jobList.map((job) => (
+                        // REPLACED: <ListJobsTable key={job.job_id} job={job} handleJobClickinList={handleJobClickinList}/>
+                        <ListItem key={job.job_id} disablePadding>
+                          <ListJobsTable job={job} handleJobClickinList={handleJobClickinList}/>
+                        </ListItem>
+                      ))}
+
+                    </List>
+                  </Paper>
+                </Box>
+
+                {/* Display Word Cloud */}
+                {wordCloudImage && (
+                  <CardMedia
+                    component="img"
+                    height="300"
+                    image={`data:image/png;base64,${wordCloudImage}`}
+                    alt="Word Cloud"
+                  />
+                )}
+              </Grid>
+
+              <Grid item xs={8}>
+
+                {/* The output pane is where we display all the keywords */}
+                <Button 
+                  variant="contained" 
+                  endIcon={<FindInPageIcon />}
+                  sx={{mb:5}} 
+                  onClick={handleAnalyze}
+                  disabled={!resume_fname} >
+                  {G_ANALYZE_TXT}
+                </Button>
+
+                <div className="keywords-pane">
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      height: 150,
+                      width: '95%'
+                    }}>
+                    <Stack direction="row" flexWrap="wrap">
+                    {found_keywords.map((keyword, index) => (
+                        <Chip 
+                          key={index}
+                          label={keyword} 
+                          color="success" 
+                          size="small"
+                          icon={<CheckCircleIcon />} 
+                          sx={{mb:1, mr:1, ml:1, py:1}} />
+                    ))}
+                    {missing_keywords_arr.map((keyword, index) => (
+                        <Chip 
+                          key={index}
+                          label={keyword} 
+                          color="error" 
+                          size="small" 
+                          icon={<ErrorIcon />} 
+                          sx={{mb:1, mr:1, ml:1, py:1}} />
+                    ))}
+                    </Stack>
+                  </Box>
+                </div>
+              </Grid>
+
+              {/* Generate Resume Grid item */}
+              <Grid item xs={8}>
+                {/* The pane where we generate a new resume */}
+                <Button variant="contained" sx={{mt:5, mb:5}} onClick={handleGenerate} endIcon={<EditNoteIcon />}>{G_GENERATERESUME_TXT}</Button>
+                
+                {/* Generate field containing the new resume */}
+                <TextField className="output-pane" label="Edited" variant="filled" multiline rows={20} value={edited_txt} />
+              
+              </Grid>
+
+            </Grid>
+          )}
+          
+          {currentView === 'jobs' && (
+            <JobDetailView jobId={selectedJobId} />
+          )}
+          
+          {currentView === 'locations' && (
+            <LocationSelect value={selectedLocation} onChange={handleLocationChange} />
+          )}
+          
+          {currentView === 'salary' && (
+            <SalaryRangeInput
+              minSalary={minSalary}
+              maxSalary={maxSalary}
+              onMinChange={handleMinSalaryChange}
+              onMaxChange={handleMaxSalaryChange}
+            />
+          )}
+          
+          {currentView === 'dashboard' && (
+            <Dashboard />
+          )}
+        </Box>
       </Box>
     </div>
   );

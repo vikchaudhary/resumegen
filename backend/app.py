@@ -21,6 +21,7 @@ import re
 from pathlib import Path
 import os
 import logging
+import re
 # for word cloud
 from wordcloud import WordCloud
 import base64
@@ -589,12 +590,13 @@ def search_keywords(fname, keyword_arr):
     # return an array containing the found keyword array, the missing keyword array, and the file contents
     return (found_keywords_arr, missing_keywords_arr)
 
-
+#----------------------------------------------------------------
 # Analyze end-point
 # Searches the job description for keywords
 # Returns a JSON object with these keys
 #   found_keywords_arr: array of all keywords that were found
 #   missing_keywords_arr: array of keywords that were not found
+#----------------------------------------------------------------
 @app.route('/analyze', methods=['POST'])
 def analyze_text():
     print("Analyzing job listing...")
@@ -616,11 +618,9 @@ def analyze_text():
 
     # clean up the keywords so unnecessary information is removed
     keywords_str = response.choices[0].text.strip()
-    # replace "/" separator with space
-    keywords_str = keywords_str.replace("/", " ")
-    # replace "- " separator with space
-    keywords_str = keywords_str.replace("- ", "")
-    # strip out the phrase at the beginning of the output
+    keywords_str = keywords_str.replace("/", " ") # replace "/" separator with space
+    
+    # strip out the phrase "Two-word keywords:" and all variations at the beginning of the output
     substring = "Two-Word Keywords:\n"
     str_list = keywords_str.split(substring)
     keywords_str = "".join(str_list)
@@ -656,9 +656,12 @@ def analyze_text():
     # remove all commas and newlines from the keywords
     keyword_arr=re.split(',|\n', keywords_str)
 
-    # Filter out one-word keywords
-    new_keyword_arr = [kw.strip() for kw in keyword_arr if len(kw.split()) > 1]
-    print(keyword_arr) #debug
+    # print(f"analyze_txt() keywords_str: {keywords_str}") 
+    keyword_arr = [strip_leading_chars(item) for item in keyword_arr]
+
+    # Remove all one-word keywords
+    new_keyword_arr = [item.strip() for item in keyword_arr if len(item.split()) > 1]
+    # print(f"analyze_txt() new_keyword_arr: {new_keyword_arr}") # print the keywords
 
     # search resume for keywords
     return_arr = search_keywords(resume_fname, new_keyword_arr)
@@ -667,10 +670,19 @@ def analyze_text():
                      'missing_keywords_arr': return_arr[1]
                     })
 
-#
+#----------------------------------------------------------------
+# strip_leading_chars() removes all leading spaces, dashes, asterisks
+#----------------------------------------------------------------
+def strip_leading_chars(str):
+    # print(f"strip_leading_chars(): {str}")
+    while str and str[0] in " -*":
+        str = str[1:]  # Remove leading characters if they are in the set
+    return str
+
+#----------------------------------------------------------------
 # Generate() endpoint
 # Calls the OpenAI API with the provided text from arg 'resume_fname' to add missing keywords in 'missing_keywords_arr'
-#
+#----------------------------------------------------------------
 @app.route('/generate', methods=['POST'])
 def generate_resume():
     data = request.get_json()

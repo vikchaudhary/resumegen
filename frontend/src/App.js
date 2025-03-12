@@ -48,7 +48,7 @@ import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
-// Add these imports at the top with other Material-UI imports
+// Add these imports to implement the left navigation bar
 import CssBaseline from '@mui/material/CssBaseline';
 import Drawer from '@mui/material/Drawer';
 import ListItemIcon from '@mui/material/ListItemIcon';
@@ -57,11 +57,11 @@ import WorkIcon from '@mui/icons-material/Work';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
-// Add these new imports
 import JobDetailView from './components/JobDetailView.jsx';
 import LocationSelect from './components/LocationSelect.jsx';
 import SalaryRangeInput from './components/SalaryRangeInput.jsx';
 import Dashboard from './components/Dashboard.jsx';
+import ResumeList from './components/ResumeList.jsx';
 
 /* Theme 
    This is a TypeScript type annotation : ThemeOptions, which specifies that the themeOptions constant must conform to the structure defined by the ThemeOptions interface (which is imported from '@mui/material/styles').
@@ -120,7 +120,7 @@ function App() {
   const [newOrgShortName, setNewOrgShortName] = useState('');
   const [newOrgLongName, setNewOrgLongName] = useState('');
   /* Added with new design */
-  const [currentView, setCurrentView] = useState('resume');
+  const [currentView, setCurrentView] = useState('resumes');
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [selectedLocation, setSelectedLocation] = useState('');
   const [minSalary, setMinSalary] = useState('');
@@ -437,11 +437,18 @@ function App() {
           <Box sx={{ overflow: 'auto' }}>
             <List>
               <ListItem disablePadding>
+                <ListItemButton selected={currentView === 'resumes'} onClick={() => setCurrentView('resumes')}>
+                  <ListItemIcon><DescriptionIcon /></ListItemIcon>
+                  <ListItemText primary="Resumes" />
+                </ListItemButton>
+              </ListItem>
+              <ListItem disablePadding>
                 <ListItemButton selected={currentView === 'resume'} onClick={() => setCurrentView('resume')}>
                   <ListItemIcon><DescriptionIcon /></ListItemIcon>
                   <ListItemText primary="Resume Analysis" />
                 </ListItemButton>
               </ListItem>
+              
               <ListItem disablePadding>
                 <ListItemButton selected={currentView === 'jobs'} onClick={() => setCurrentView('jobs')}>
                   <ListItemIcon><WorkIcon /></ListItemIcon>
@@ -472,6 +479,9 @@ function App() {
 
         <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
           <Toolbar />
+          {currentView === 'resumes' && (
+            <ResumeList />
+          )}
           {currentView === 'resume' && (
             <Grid container spacing={2}>
               <Grid item xs={7}>

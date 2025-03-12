@@ -29,9 +29,11 @@ from io import BytesIO
 import matplotlib
 matplotlib.use('Agg')  # Use the Agg backend (no GUI)
 import matplotlib.pyplot as plt
+from resume import resume_bp  # import resume.py
 
 app = Flask(__name__)
 CORS(app)
+app.register_blueprint(resume_bp)  # Register the resume blueprint
 app.debug = True
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config['LOGGING_FORMAT'] = '%(asctime)s %(levelname)s: %(message)s'
@@ -110,6 +112,22 @@ def initialize_db():
             FOREIGN KEY (status_id) REFERENCES job_status (id),
             FOREIGN KEY (location_id) REFERENCES location (id),
             CHECK (max_salary IS NULL OR min_salary IS NULL OR max_salary > min_salary)
+        )
+    ''')
+
+    # Create the resume table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS resume (
+            resume_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content BLOB NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_date DATETIME NOT NULL,
+            last_edited DATETIME NOT NULL,
+            score INTEGER DEFAULT 0,
+            matched_job TEXT,
+            match TEXT,
+            FOREIGN KEY (user_id) REFERENCES user (id)
         )
     ''')
 

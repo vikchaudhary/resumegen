@@ -2,7 +2,10 @@
 *.log
 
 # Ignore build files
-frontend/build
+frontend/build/
+
+# Ignore node.js
+frontend/node_modules/
 
 # Ignore Python cache
 __pycache__/

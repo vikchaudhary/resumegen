@@ -174,3 +174,34 @@ def copy_resume(resume_id):
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@resume_bp.route('/resume/<int:resume_id>', methods=['PUT'])
+def update_resume(resume_id):
+    try:
+        title = request.form.get('title')
+        user_id = request.form.get('user_id')
+        now = datetime.datetime.now()
+        
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+        
+        update_query = 'UPDATE resume SET title = ?, last_edited = ?'
+        params = [title, now]
+        
+        if 'file' in request.files:
+            file = request.files['file']
+            content = file.read()
+            update_query += ', content = ?'
+            params.append(content)
+            
+        update_query += ' WHERE resume_id = ?'
+        params.append(resume_id)
+        
+        cursor.execute(update_query, params)
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'message': 'Resume updated successfully'})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

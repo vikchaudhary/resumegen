@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
+  Chip,
   Table,
   TableBody,
   TableCell,
@@ -25,6 +26,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import AddIcon from '@mui/icons-material/Add';
 import axios from 'axios';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
 
 const ResumeList = () => {
   const [resumes, setResumes] = useState([]);
@@ -33,6 +36,12 @@ const ResumeList = () => {
   const [title, setTitle] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [editDialog, setEditDialog] = useState(false);
+  const [editingResume, setEditingResume] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editFile, setEditFile] = useState(null);
+  const [jobs, setJobs] = useState([]);
+  const [selectedJob, setSelectedJob] = useState('');
 
   useEffect(() => {
     fetchResumes();
@@ -94,10 +103,29 @@ const ResumeList = () => {
     }
   };
 
-  const handleEdit = async (resume_id) => {
+  // Add this useEffect to fetch jobs
+  useEffect(() => {
+    const fetchJobs = async () => {
+      try {
+        const response = await axios.get('http://localhost:5000/get-jobs');
+        setJobs(response.data);
+      } catch (error) {
+        console.error('Error fetching jobs:', error);
+      }
+    };
+    fetchJobs();
+  }, []);
+
+  // Update handleEdit to also fetch jobs
+  const handleEdit = async (resume) => {
     try {
-      // Implement edit functionality
-      console.log('Edit resume:', resume_id);
+      // Edit the resume
+      setEditingResume(resume);
+      setEditTitle(resume.title);
+      setSelectedJob('');
+      setEditFile(null);
+      setEditDialog(true);
+      console.log('Edit resume:', resume.title);
     } catch (error) {
       setSnackbar({
         open: true,
@@ -145,6 +173,48 @@ const ResumeList = () => {
     }
   };
 
+  // handle Edit 
+  const handleEditSubmit = async () => {
+    try {
+      const formData = new FormData();
+      formData.append('title', editTitle);
+      formData.append('user_id', 1); // Add user_id to the form data
+      if (editFile) {
+        formData.append('file', editFile);
+      }
+      if (selectedJob) {
+        formData.append('job_id', selectedJob);
+      }
+
+      await axios.put(`http://localhost:5000/resume/${editingResume.id}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (selectedJob) {
+        await axios.post(`http://localhost:5000/resume/${editingResume.id}/match/${selectedJob}`, {
+          score: 0,
+          match_details: ''
+        });
+      }
+
+      setEditDialog(false);
+      fetchResumes();
+      setSnackbar({
+        open: true,
+        message: 'Resume updated successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: 'Failed to update resume',
+        severity: 'error'
+      });
+    }
+  };
+
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
   };
@@ -169,6 +239,7 @@ const ResumeList = () => {
         </Button>
       </Box>
 
+      {/* Create Dialog */}
       <Dialog 
         open={openDialog} 
         onClose={() => setOpenDialog(false)} 
@@ -198,6 +269,54 @@ const ResumeList = () => {
           <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
           <Button onClick={handleCreateResume} variant="contained">
             Create
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog 
+        open={editDialog} 
+        onClose={() => setEditDialog(false)} 
+        maxWidth="sm" 
+        fullWidth
+        PaperProps={{ sx: { p: 2 } }}
+      >
+        <DialogTitle>Edit Resume</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Resume Title"
+            fullWidth
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <input
+            type="file"
+            accept=".pdf"
+            onChange={(e) => setEditFile(e.target.files[0])}
+            style={{ width: '100%', marginBottom: '16px' }}
+          />
+          <Select
+            fullWidth
+            value={selectedJob}
+            onChange={(e) => setSelectedJob(e.target.value)}
+            displayEmpty
+            sx={{ mb: 2 }}
+          >
+            <MenuItem value="" disabled>Select a job to match</MenuItem>
+            {jobs.map((job) => (
+              <MenuItem key={job.job_id} value={job.job_id}>
+                {job.job_title} <Chip label={job.org_name} color="primary" size="small" sx={{ mb: 1, mr: 1, ml: 1 }} />
+              </MenuItem>
+            ))}
+          </Select>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDialog(false)}>Cancel</Button>
+          <Button onClick={handleEditSubmit} variant="contained">
+            Save Changes
           </Button>
         </DialogActions>
       </Dialog>
@@ -233,7 +352,7 @@ const ResumeList = () => {
                   )}
                 </TableCell>
                 <TableCell align="center">
-                  <IconButton onClick={() => handleEdit(resume.id)} size="small">
+                  <IconButton onClick={() => handleEdit(resume)} size="small">
                     <EditIcon />
                   </IconButton>
                   <IconButton onClick={() => handleCopy(resume.id)} size="small">

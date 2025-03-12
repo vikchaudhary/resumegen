@@ -233,7 +233,7 @@ def get_jobs():
             INNER JOIN org o ON j.org_id = o.id
             LEFT JOIN job_status s ON j.status_id = s.id
             LEFT JOIN location l ON j.location_id = l.id
-            ORDER BY j.updated_at DESC
+            ORDER BY j.title ASC
         ''')
         jobs = cursor.fetchall()
 

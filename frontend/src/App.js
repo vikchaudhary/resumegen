@@ -18,7 +18,7 @@ import FileOpenIcon from '@mui/icons-material/FileOpen';
 import SaveAsIcon from '@mui/icons-material/SaveAs';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import FindInPageIcon from '@mui/icons-material/FindInPage';
-import { ThemeOptions } from '@mui/material/styles';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 /* List */
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
@@ -57,26 +57,14 @@ import WorkIcon from '@mui/icons-material/Work';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+// Components
+import { G_COLORS } from './config/colors.js';
 import JobDetailView from './components/JobDetailView.jsx';
 import LocationSelect from './components/LocationSelect.jsx';
 import SalaryRangeInput from './components/SalaryRangeInput.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import ResumeList from './components/ResumeList.jsx';
-
-/* Theme 
-   This is a TypeScript type annotation : ThemeOptions, which specifies that the themeOptions constant must conform to the structure defined by the ThemeOptions interface (which is imported from '@mui/material/styles').
-*/
-export const themeOptions: ThemeOptions = {
-  palette: {
-    mode: 'light',
-    primary: {
-      main: '#3f51b5',
-    },
-    secondary: {
-      main: '#f50057',
-    },
-  },
-};
+import JobList from './components/JobList.jsx';
 
 /* Constants */
 const G_ANALYZE_TXT = "Analyze Resume";
@@ -92,7 +80,84 @@ const G_ALERT_RESUMEFILENOTSET = 'Please select a resume file first';
 const G_NAME_OF_ORGANIZATION_TXT = 'Name of organization';
 const G_SHORT_NAME_TXT = "Short name";
 const G_FULL_ORG_NAME_TXT = "Full org name";
+const G_JOBS_TXT = "Jobs";
 const drawerWidth = 240;
+
+// Theme
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: G_COLORS.PRIMARY,
+    },
+    secondary: {
+      main: G_COLORS.SECONDARY,
+    },
+    background: {
+      default: G_COLORS.BACKGROUND,
+      paper: G_COLORS.BACKGROUND,
+    },
+    action: {
+      hover: G_COLORS.QUATERNARY,
+    }
+  },
+  components: {
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          backgroundColor: G_COLORS.PRIMARY,
+          color: G_COLORS.BACKGROUND,
+        }
+      }
+    },
+    MuiButton: {
+      styleOverrides: {
+        contained: {
+          backgroundColor: G_COLORS.PRIMARY,
+          '&:hover': {
+            backgroundColor: G_COLORS.SECONDARY,
+          }
+        }
+      }
+    },
+    MuiDrawer: {
+      styleOverrides: {
+        paper: {
+          backgroundColor: G_COLORS.PRIMARY,
+          color: G_COLORS.BACKGROUND,
+          '& .MuiListItemIcon-root': {
+            color: G_COLORS.BACKGROUND,
+          },
+          '& .MuiListItemText-root': {
+            color: G_COLORS.BACKGROUND,
+          },
+          '& .MuiListItemButton-root': {
+            '&:hover': {
+              backgroundColor: `${G_COLORS.SECONDARY}80`,
+            },
+            '&.Mui-selected': {
+              backgroundColor: G_COLORS.SECONDARY,
+              '&:hover': {
+                backgroundColor: G_COLORS.SECONDARY,
+              }
+            }
+          }
+        }
+      }
+    },
+    MuiListItemButton: {
+      styleOverrides: {
+        root: {
+          '&:hover': {
+            backgroundColor: G_COLORS.QUATERNARY,
+          },
+          '&.Mui-selected': {
+            backgroundColor: G_COLORS.TERTIARY,
+          }
+        }
+      }
+    }
+  }
+});
 
 function App() {
   /**
@@ -411,6 +476,7 @@ function App() {
 
   // This is the web application, i.e. the output
   return (
+    <ThemeProvider theme={theme}>
     <div>
       <Box sx={{ display: 'flex' }}>
         <CssBaseline />
@@ -430,6 +496,25 @@ function App() {
             '& .MuiDrawer-paper': {
               width: drawerWidth,
               boxSizing: 'border-box',
+              backgroundColor: G_COLORS.PRIMARY,
+              color: G_COLORS.BACKGROUND,
+              '& .MuiListItemIcon-root': {
+                color: G_COLORS.BACKGROUND,
+              },
+              '& .MuiListItemText-root': {
+                color: G_COLORS.BACKGROUND,
+              },
+              '& .MuiListItemButton-root': {
+                '&:hover': {
+                  backgroundColor: `${G_COLORS.SECONDARY}80`,
+                },
+                '&.Mui-selected': {
+                  backgroundColor: G_COLORS.SECONDARY,
+                  '&:hover': {
+                    backgroundColor: G_COLORS.SECONDARY,
+                  }
+                }
+              }
             },
           }}
         >
@@ -452,7 +537,7 @@ function App() {
               <ListItem disablePadding>
                 <ListItemButton selected={currentView === 'jobs'} onClick={() => setCurrentView('jobs')}>
                   <ListItemIcon><WorkIcon /></ListItemIcon>
-                  <ListItemText primary="Job Management" />
+                  <ListItemText primary={G_JOBS_TXT} />
                 </ListItemButton>
               </ListItem>
               <ListItem disablePadding>
@@ -682,7 +767,11 @@ function App() {
           )}
           
           {currentView === 'jobs' && (
-            <JobDetailView jobId={selectedJobId} />
+            <JobList 
+              jobs={jobList}
+              onJobUpdate={fetchJobs}
+              companies={companies}
+            />
           )}
           
           {currentView === 'locations' && (
@@ -704,6 +793,7 @@ function App() {
         </Box>
       </Box>
     </div>
+    </ThemeProvider>
   );
 }
 

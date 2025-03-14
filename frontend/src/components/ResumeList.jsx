@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Chip,
+import { Box, Chip,
   Table,
   TableBody,
   TableCell,
@@ -21,6 +19,7 @@ import {
   Alert,
   Snackbar
 } from '@mui/material';
+import { styled } from '@mui/material/styles';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -28,6 +27,23 @@ import AddIcon from '@mui/icons-material/Add';
 import axios from 'axios';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import MenuIcon from '@mui/icons-material/Menu';
+import PreviewIcon from '@mui/icons-material/Preview';
+import AnalyticsIcon from '@mui/icons-material/Analytics';
+import WorkIcon from '@mui/icons-material/Work';
+import { G_COLORS } from '../config/colors.js';
+import ResumeDetail from './ResumeDetail.jsx';
+
+// Styled components using the theme colors
+const StyledPaper = styled(Paper)(({ theme }) => ({
+  backgroundColor: G_COLORS.BACKGROUND,
+  '&:hover': {
+    backgroundColor: G_COLORS.QUATERNARY,
+  }
+}));
 
 const ResumeList = () => {
   const [resumes, setResumes] = useState([]);
@@ -42,6 +58,8 @@ const ResumeList = () => {
   const [editFile, setEditFile] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [selectedJob, setSelectedJob] = useState('');
+  const [viewingResume, setViewingResume] = useState(null);
+  const [resumeContent, setResumeContent] = useState(null);
 
   useEffect(() => {
     fetchResumes();
@@ -223,8 +241,30 @@ const ResumeList = () => {
     return <LinearProgress />;
   }
 
+  const handleView = async (resume) => {
+    try {
+      const response = await axios.get(`http://localhost:5000/resume/${resume.id}`);
+      setResumeContent(response.data.content);
+      setViewingResume(resume);
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: 'Failed to load resume content',
+        severity: 'error'
+      });
+    }
+  };
+
   return (
-    <Box sx={{ width: '100%', p: 2 }}> {/* Add padding */}
+    <Box sx={{ width: '100%', p: 2 }}>
+      {viewingResume ? (
+        <ResumeDetail
+          resume={viewingResume}
+          content={resumeContent}
+          onBack={() => setViewingResume(null)}
+        />
+      ) : (
+        <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5" component="h2">
           Resumes
@@ -233,7 +273,12 @@ const ResumeList = () => {
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => setOpenDialog(true)}
-          sx={{ backgroundColor: '#00796b' }}
+          sx={{ 
+            backgroundColor: G_COLORS.PRIMARY,
+            '&:hover': {
+              backgroundColor: G_COLORS.SECONDARY
+            }
+          }}
         >
           Create New Resume
         </Button>
@@ -335,7 +380,23 @@ const ResumeList = () => {
           <TableBody>
             {resumes.map((resume) => (
               <TableRow key={resume.id}>
-                <TableCell>{resume.title}</TableCell>
+                <TableCell>
+                  <Button
+                    onClick={() => handleView(resume)}
+                    sx={{
+                      textTransform: 'none',
+                      padding: 0,
+                      color: G_COLORS.PRIMARY,
+                      '&:hover': {
+                        textDecoration: 'underline',
+                        background: 'none',
+                        color: G_COLORS.SECONDARY
+                      }
+                    }}
+                  >
+                    {resume.title}
+                  </Button>
+                </TableCell>
                 <TableCell>{new Date(resume.created_date).toLocaleDateString()}</TableCell>
                 <TableCell>{new Date(resume.last_edited).toLocaleDateString()}</TableCell>
                 <TableCell>
@@ -352,6 +413,9 @@ const ResumeList = () => {
                   )}
                 </TableCell>
                 <TableCell align="center">
+                  <IconButton onClick={() => handleView(resume)} size="small">
+                    <VisibilityIcon />
+                  </IconButton>
                   <IconButton onClick={() => handleEdit(resume)} size="small">
                     <EditIcon />
                   </IconButton>
@@ -378,6 +442,8 @@ const ResumeList = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
+    </>
+     )}
     </Box>
   );
 };

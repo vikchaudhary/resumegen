@@ -46,8 +46,8 @@ logger = logging.getLogger(__name__)
 
 # Global variables
 # WARNING! Do not publish this code with your secret OpenAI key!
-# openai.api_key = os.getenv("OPENAI_KEY")
-client = OpenAI(api_key=os.getenv("OPENAI_KEY"))
+# openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Configure SQLite database
 DATABASE_NAME = 'keyguru.db'
